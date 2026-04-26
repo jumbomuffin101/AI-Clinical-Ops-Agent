@@ -1,0 +1,17 @@
+{
+  "36821": {
+    "allowed_amount": 1840.25,
+    "currency": "USD",
+    "source": "Synthetic 2026 ambulatory surgery fee schedule"
+  },
+  "47562": {
+    "allowed_amount": 1325.75,
+    "currency": "USD",
+    "source": "Synthetic 2026 ambulatory surgery fee schedule"
+  },
+  "35371": {
+    "allowed_amount": 3910.5,
+    "currency": "USD",
+    "source": "Synthetic 2026 hospital outpatient fee schedule"
+  }
+}
