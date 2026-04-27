@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     database_url: str = "sqlite:///./clinical_ops.db"
     cors_origins: str = "http://localhost:3000"
+    auto_create_tables: bool = True
+    max_request_bytes: int = 262144
     project_root: Path = Path(__file__).resolve().parents[3]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

@@ -21,5 +21,13 @@ class KeywordRetriever:
             content = doc["content"].lower()
             score = sum(content.count(term) for term in terms)
             if score:
-                scored.append({**doc, "score": score})
+                scored.append({"source": doc["source"], "snippet": self._snippet(doc["content"], terms), "score": score})
         return sorted(scored, key=lambda item: int(item["score"]), reverse=True)[:limit]
+
+    @staticmethod
+    def _snippet(content: str, terms: set[str], size: int = 280) -> str:
+        lower = content.lower()
+        first_hit = min((lower.find(term) for term in terms if lower.find(term) >= 0), default=0)
+        start = max(first_hit - 80, 0)
+        snippet = content[start : start + size].replace("\n", " ").strip()
+        return snippet

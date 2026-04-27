@@ -68,6 +68,7 @@ class CPTCandidateRecord(Base):
     rationale: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float)
     supported_by_docs: Mapped[bool] = mapped_column(default=True)
+    evidence_used: Mapped[list[dict]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -81,6 +82,7 @@ class AuditFindingRecord(Base):
     message: Mapped[str] = mapped_column(Text)
     related_code: Mapped[str | None] = mapped_column(String(20))
     recommendation: Mapped[str] = mapped_column(Text)
+    evidence_used: Mapped[list[dict]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

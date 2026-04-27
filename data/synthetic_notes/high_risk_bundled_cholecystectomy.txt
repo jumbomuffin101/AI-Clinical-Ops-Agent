@@ -1,0 +1,7 @@
+Title: Ambiguous laparoscopic cholecystectomy with cholangiogram
+
+Indication: Synthetic patient with symptomatic gallstones.
+
+Procedure: Laparoscopic cholecystectomy, possible cholangiogram.
+
+Operative note: Four ports were placed and the gallbladder was dissected from the liver bed. The cystic duct and artery were clipped and divided. The note states that a cholangiogram may have been performed but does not clearly document images, catheter placement, or interpretation. This creates ambiguity between cholecystectomy code choices.

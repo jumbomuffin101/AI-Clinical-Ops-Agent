@@ -1,0 +1,102 @@
+{
+  "note": {
+    "id": "6f4f9a12-8b2e-4c71-b23a-41258f5792f1",
+    "title": "High risk bundled chole smoke",
+    "created_at": "2026-04-27T14:30:00Z",
+    "synthetic_data_only": true
+  },
+  "analysis": {
+    "id": "98ab1ed5-4417-4f69-8ef6-6e6ec9499649",
+    "status": "completed",
+    "extracted_procedures": [
+      {
+        "name": "Laparoscopic cholecystectomy",
+        "body_site": "gallbladder",
+        "approach": "laparoscopic",
+        "laterality": null,
+        "evidence": "Operative note describes laparoscopic removal of the gallbladder.",
+        "confidence": 0.95
+      },
+      {
+        "name": "Laparoscopic cholecystectomy with cholangiography",
+        "body_site": "gallbladder",
+        "approach": "laparoscopic",
+        "laterality": null,
+        "evidence": "Operative note references gallbladder removal with cholangiogram documentation.",
+        "confidence": 0.82
+      }
+    ],
+    "cpt_candidates": [
+      {
+        "procedure_name": "Laparoscopic cholecystectomy",
+        "code": "47562",
+        "description": "Laparoscopy, surgical; cholecystectomy",
+        "modifiers": [],
+        "rationale": "Matched local rule for Laparoscopic cholecystectomy; retrieved 2 guideline snippet(s).",
+        "confidence": 0.94,
+        "supported_by_docs": true,
+        "evidence_used": [
+          {
+            "source": "laparoscopic_general_surgery_guidelines.md",
+            "snippet": "Code 47562 may be considered for laparoscopic surgical cholecystectomy when the operative note documents gallbladder removal without cholangiography.",
+            "score": 6
+          }
+        ]
+      },
+      {
+        "procedure_name": "Laparoscopic cholecystectomy with cholangiography",
+        "code": "47563",
+        "description": "Laparoscopy, surgical; cholecystectomy with cholangiography",
+        "modifiers": [],
+        "rationale": "Matched local rule for Laparoscopic cholecystectomy with cholangiography; retrieved 2 guideline snippet(s).",
+        "confidence": 0.82,
+        "supported_by_docs": true,
+        "evidence_used": [
+          {
+            "source": "laparoscopic_general_surgery_guidelines.md",
+            "snippet": "Do not report mutually exclusive cholecystectomy codes for the same operative session.",
+            "score": 3
+          }
+        ]
+      }
+    ],
+    "audit_findings": [
+      {
+        "severity": "high",
+        "category": "bundling_conflict",
+        "message": "Potential mutually exclusive laparoscopic cholecystectomy code pair detected.",
+        "related_code": "47562,47563",
+        "recommendation": "Bill only the supported definitive code for the documented service.",
+        "evidence_used": []
+      }
+    ],
+    "reimbursement_estimates": [
+      {
+        "code": "47562",
+        "allowed_amount": 1325.75,
+        "currency": "USD",
+        "source": "Synthetic 2026 ambulatory surgery fee schedule"
+      },
+      {
+        "code": "47563",
+        "allowed_amount": 1510.4,
+        "currency": "USD",
+        "source": "Synthetic 2026 ambulatory surgery fee schedule"
+      }
+    ],
+    "total_estimated_reimbursement": 2836.15
+  },
+  "claim_readiness": {
+    "score": 56,
+    "status": "High Risk",
+    "explanation": "Average CPT confidence contributes 88 base points. bundling conflict penalty: -36. All CPT candidates matched the local fee schedule: +5."
+  },
+  "final_report": {
+    "claim_readiness": "high_risk",
+    "claim_readiness_score": 56,
+    "claim_readiness_status": "High Risk",
+    "total_estimated_reimbursement": 2836.15,
+    "procedure_count": 2,
+    "audit_issue_count": 1
+  }
+}

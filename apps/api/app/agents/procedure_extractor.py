@@ -32,6 +32,17 @@ class ProcedureExtractor:
                     confidence=0.95,
                 )
             )
+        if "cholangiogram" in text or "cholangiography" in text:
+            procedures.append(
+                ExtractedProcedure(
+                    name="Laparoscopic cholecystectomy with cholangiography",
+                    body_site="gallbladder",
+                    approach="laparoscopic",
+                    laterality=None,
+                    evidence="Operative note references gallbladder removal with cholangiogram documentation.",
+                    confidence=0.82,
+                )
+            )
         if "femoral endarterectomy" in text or ("endarterectomy" in text and "femoral" in text):
             procedures.append(
                 ExtractedProcedure(
@@ -41,6 +52,61 @@ class ProcedureExtractor:
                     laterality="left" if "left" in text else "right" if "right" in text else None,
                     evidence="Operative note describes plaque removal from the femoral artery.",
                     confidence=0.91,
+                )
+            )
+        if "carotid endarterectomy" in text or ("endarterectomy" in text and "carotid" in text):
+            procedures.append(
+                ExtractedProcedure(
+                    name="Carotid endarterectomy",
+                    body_site="carotid artery",
+                    approach="open",
+                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    evidence="Operative note describes plaque removal from the carotid artery.",
+                    confidence=0.9,
+                )
+            )
+        if "appendectomy" in text or "appendix" in text:
+            procedures.append(
+                ExtractedProcedure(
+                    name="Laparoscopic appendectomy" if "laparoscopic" in text else "Appendectomy",
+                    body_site="appendix",
+                    approach="laparoscopic" if "laparoscopic" in text else "open",
+                    laterality=None,
+                    evidence="Operative note documents appendix removal.",
+                    confidence=0.9 if "appendix" in text else 0.78,
+                )
+            )
+        if "inguinal hernia" in text and "repair" in text:
+            procedures.append(
+                ExtractedProcedure(
+                    name="Open inguinal hernia repair",
+                    body_site="inguinal region",
+                    approach="open",
+                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    evidence="Operative note describes open inguinal hernia repair with mesh placement.",
+                    confidence=0.88,
+                )
+            )
+        if "colonoscopy" in text:
+            procedures.append(
+                ExtractedProcedure(
+                    name="Diagnostic colonoscopy",
+                    body_site="colon",
+                    approach="endoscopic",
+                    laterality=None,
+                    evidence="Operative note documents diagnostic colonoscopy to the cecum.",
+                    confidence=0.91 if "cecum" in text else 0.72,
+                )
+            )
+        if "angiogram" in text and ("lower extremity" in text or "leg" in text):
+            procedures.append(
+                ExtractedProcedure(
+                    name="Lower extremity angiogram",
+                    body_site="lower extremity arteries",
+                    approach="percutaneous",
+                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    evidence="Operative note describes catheter-based lower extremity angiography.",
+                    confidence=0.84,
                 )
             )
 

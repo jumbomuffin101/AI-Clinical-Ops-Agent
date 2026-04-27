@@ -9,7 +9,7 @@ from app.agents.reimbursement_estimator import ReimbursementEstimator
 from app.agents.report_generator import ReportGenerator
 from app.config import get_settings
 from app.models import db as models
-from app.models.schemas import AnalysisReport, OperativeNote
+from app.models.schemas import AnalysisListItem, AnalysisReport, OperativeNote
 from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
 
@@ -89,6 +89,7 @@ class AnalysisService:
                     "rationale": row.rationale,
                     "confidence": row.confidence,
                     "supported_by_docs": row.supported_by_docs,
+                    "evidence_used": row.evidence_used or [],
                 }
                 for row in analysis.cpt_candidates
             ],
@@ -100,6 +101,7 @@ class AnalysisService:
                     "message": row.message,
                     "related_code": row.related_code,
                     "recommendation": row.recommendation,
+                    "evidence_used": row.evidence_used or [],
                 }
                 for row in analysis.audit_findings
             ],
@@ -118,3 +120,41 @@ class AnalysisService:
             report=analysis.report,
             created_at=analysis.created_at,
         )
+
+    def list_recent_analyses(self, db: Session, limit: int = 10) -> list[AnalysisListItem]:
+        rows = db.query(models.Analysis).join(models.Note).order_by(models.Analysis.created_at.desc()).limit(limit).all()
+        items: list[AnalysisListItem] = []
+        for analysis in rows:
+            top_candidate = analysis.cpt_candidates[0] if analysis.cpt_candidates else None
+            items.append(
+                AnalysisListItem(
+                    id=UUID(analysis.id),
+                    title=analysis.note.title or f"Analysis {analysis.id[:8]}",
+                    created_at=analysis.created_at,
+                    top_cpt_code=top_candidate.code if top_candidate else None,
+                    total_reimbursement=analysis.total_estimated_reimbursement,
+                    claim_readiness_status=analysis.report.get("claim_readiness_status", analysis.report.get("claim_readiness", "Needs Review")),
+                )
+            )
+        return items
+
+    def export_analysis(self, db: Session, analysis_id: UUID) -> dict:
+        analysis = db.get(models.Analysis, str(analysis_id))
+        if analysis is None:
+            raise LookupError("Analysis not found")
+        report = self.get_analysis(db, analysis_id)
+        return {
+            "note": {
+                "id": analysis.note.id,
+                "title": analysis.note.title,
+                "created_at": analysis.note.created_at.isoformat(),
+                "synthetic_data_only": True,
+            },
+            "analysis": report.model_dump(mode="json"),
+            "claim_readiness": {
+                "score": analysis.report.get("claim_readiness_score"),
+                "status": analysis.report.get("claim_readiness_status"),
+                "explanation": analysis.report.get("claim_readiness_explanation"),
+            },
+            "final_report": analysis.report,
+        }

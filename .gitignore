@@ -5,7 +5,9 @@ node_modules/
 __pycache__/
 .pytest_cache/
 pytest-cache-files-*/
+apps/api/.test_dbs/
 *.pyc
+*.db
 .DS_Store
 clinical_ops.db
 dist/

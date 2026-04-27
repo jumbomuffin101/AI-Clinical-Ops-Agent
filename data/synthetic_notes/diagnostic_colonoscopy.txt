@@ -1,0 +1,7 @@
+Title: Diagnostic colonoscopy
+
+Indication: Synthetic patient with positive screening test.
+
+Procedure: Diagnostic colonoscopy.
+
+Operative note: The colonoscope was advanced to the cecum with identification of the appendiceal orifice and ileocecal valve. The mucosa was inspected on withdrawal. No biopsy, polypectomy, or other therapeutic intervention was performed.

@@ -1,0 +1,7 @@
+Title: Lower extremity angiogram with incomplete documentation
+
+Indication: Synthetic patient with peripheral arterial disease.
+
+Procedure: Lower extremity angiogram.
+
+Operative note: Percutaneous access was obtained and a catheter was advanced for lower extremity angiogram. Images were obtained, but the dictated note does not clearly document left or right laterality, selected vascular territory, or whether additional interventions were performed.

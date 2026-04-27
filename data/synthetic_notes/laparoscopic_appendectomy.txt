@@ -1,0 +1,7 @@
+Title: Laparoscopic appendectomy
+
+Indication: Synthetic patient with acute uncomplicated appendicitis.
+
+Procedure: Laparoscopic appendectomy.
+
+Operative note: Three ports were placed. The appendix was inflamed but not perforated. The mesoappendix was divided, the appendix base was stapled, and the appendix was removed in a retrieval bag. Hemostasis was confirmed.
