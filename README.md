@@ -1,19 +1,27 @@
 # AI Clinical Ops Agent
 
-AI Clinical Ops Agent is a full-stack healthcare operations platform that turns synthetic surgical operative notes into structured procedure extraction, CPT-style coding candidates, billing audit findings, reimbursement estimates, RAG-backed evidence, claim readiness scoring, and downloadable JSON reports. It is designed as a resume-grade systems project: modular, testable, locally runnable without API keys, and deployment-ready with Docker, FastAPI, Next.js, PostgreSQL, SQLAlchemy, and Alembic.
+AI Clinical Ops Agent is a synthetic-demo healthcare revenue cycle tool that turns a surgical operative note into likely CPT billing-code candidates, documentation and billing risk flags, reimbursement estimates, and a plain-English claim readiness report. It is built to feel like a real healthcare operations dashboard rather than a chatbot: users choose or paste a synthetic note, run billing analysis, review what needs attention, and export a structured report for operational review.
 
-## Problem Statement
+## Why It Matters
 
-Surgical coding and revenue-cycle workflows depend on precise operative-note interpretation, modifier validation, payer-style audit checks, and reimbursement estimation. Manual review is expensive and error-prone, while naive chatbot workflows are hard to test. This project models a practical AI-assisted coding workflow with deterministic mock agents first, so the system can be validated locally before plugging in real LLM providers.
+Surgical coding and revenue-cycle workflows depend on precise operative-note interpretation, modifier validation, payer-style audit checks, and reimbursement estimation. Missing laterality, unsupported codes, low-confidence documentation, or bundled-code conflicts can delay claims or create compliance risk. This project demonstrates how an AI-assisted workflow can support billing and operations teams while keeping outputs structured, auditable, and testable.
+
+## Who It Is For
+
+This demo is intended for healthcare operations, revenue cycle, billing, and product/engineering audiences evaluating how AI agents can assist with clinical documentation review. It uses only synthetic notes so the workflow can be shown publicly without exposing protected health information.
+
+## What The Demo Proves
+
+The app proves that a multi-agent system can process a note end to end without relying on a generic chat interface: procedure extraction, CPT candidate generation, RAG-backed evidence retrieval, billing audit checks, reimbursement estimation, claim readiness scoring, analysis history, and JSON export all work locally with deterministic mock logic before real LLM APIs are added.
 
 ## Key Features
 
-- Synthetic operative-note intake with strict no-PHI workflow.
+- Guided synthetic operative-note workflow with a persistent no-PHI warning.
 - Multi-agent backend pipeline for procedure extraction, CPT candidate generation, billing audit, reimbursement estimation, and report generation.
 - Local keyword RAG over coding guideline snippets, with retrieved evidence shown in the dashboard.
 - Deterministic claim readiness score from `0-100` with `Ready`, `Needs Review`, and `High Risk` statuses.
 - Analysis history and structured JSON export endpoints.
-- Next.js dashboard with example note selector, CPT table, audit table, evidence panel, recent analyses, and export controls.
+- Next.js dashboard with step-by-step guidance, plain-English claim summary, CPT table, audit table, expandable evidence, recent analyses, and export controls.
 - Production-ready backend foundations: Alembic migrations, health checks, integration tests, Docker deployment, and provider abstraction.
 
 ## Architecture
