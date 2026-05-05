@@ -150,6 +150,7 @@ export default function Home() {
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [analysisStarted, setAnalysisStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState("Copy JSON");
   const [showEvidence, setShowEvidence] = useState(false);
@@ -166,6 +167,7 @@ export default function Home() {
     setNoteText(example.note);
     setReport(null);
     setError(null);
+    setAnalysisStarted(false);
     setCopyState("Copy JSON");
     setShowEvidence(false);
     setShowJson(false);
@@ -190,6 +192,7 @@ export default function Home() {
       return;
     }
     setReport(payload);
+    setAnalysisStarted(true);
     setCopyState("Copy JSON");
   }
 
@@ -200,14 +203,18 @@ export default function Home() {
     }
 
     setLoading(true);
+    setAnalysisStarted(true);
     setError(null);
     setCopyState("Copy JSON");
     try {
-      const response = await fetch(`${apiBaseUrl}/api/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: selected.title, note_text: noteText }),
-      });
+      const [response] = await Promise.all([
+        fetch(`${apiBaseUrl}/api/notes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: selected.title, note_text: noteText }),
+        }),
+        delay(1250),
+      ]);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error?.message ?? "API request failed.");
       setReport(payload);
@@ -246,7 +253,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f7f8] text-[#18242b]">
+    <main className="min-h-screen bg-[#f4f1ec] text-[#1f2d33]">
       <ProductHeader />
 
       <section className="mx-auto max-w-7xl px-5 py-6">
@@ -264,6 +271,7 @@ export default function Home() {
           />
 
           <div className="space-y-5">
+            <AnalysisStagePanel visible={analysisStarted || Boolean(report)} loading={loading} complete={Boolean(report)} />
             <ResultSummary report={report} loading={loading} />
             <KeyFindings report={report} />
           </div>
@@ -290,28 +298,32 @@ export default function Home() {
   );
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function ProductHeader() {
   return (
-    <header className="border-b border-[#dbe3e7] bg-white">
-      <div className="mx-auto max-w-7xl px-5 py-7">
+    <header className="border-b border-[#e7ded2] bg-[#fffdfa]">
+      <div className="mx-auto max-w-7xl px-5 py-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
           <div>
-            <p className="text-sm font-semibold text-[#44616d]">Healthcare revenue cycle demo</p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#14232b]">AI Clinical Ops Agent</h1>
-            <p className="mt-3 max-w-4xl text-base leading-7 text-[#4d626d]">
+            <p className="text-sm font-semibold text-[#58716c]">Healthcare revenue cycle demo</p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#1f2d33]">AI Clinical Ops Agent</h1>
+            <p className="mt-3 max-w-4xl text-base leading-7 text-[#586b69]">
               Turn a synthetic operative note into CPT candidates, billing risk flags, reimbursement estimates, and a claim readiness report.
             </p>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#60757e]">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#71817d]">
               Simulates how a billing operations team reviews operative notes before CPT submission.
             </p>
           </div>
-          <div className="rounded-lg border border-[#f0c8a2] bg-[#fff8ef] p-4">
-            <p className="text-sm font-semibold text-[#8a4b0f]">Demo only. Do not enter real patient information.</p>
-            <p className="mt-2 text-sm leading-6 text-[#6d573f]">Use the included synthetic examples or paste synthetic text you created for testing.</p>
+          <div className="rounded-2xl border border-[#ead8c0] bg-[#fbf2e6] p-5 shadow-[0_10px_26px_rgba(90,68,45,0.06)]">
+            <p className="text-sm font-semibold text-[#7a5428]">Demo only. Do not enter real patient information.</p>
+            <p className="mt-2 text-sm leading-6 text-[#776653]">Use the included synthetic examples or paste synthetic text you created for testing.</p>
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
+        <div className="mt-7 grid gap-4 md:grid-cols-3">
           <ValueCard title="Identify likely CPT codes" text="Extract procedures and suggest billing-code candidates from the note." />
           <ValueCard title="Flag billing/documentation risks" text="Surface missing details, low-confidence coding, and bundling concerns." />
           <ValueCard title="Estimate reimbursement impact" text="Map suggested codes to a local synthetic fee schedule." />
@@ -323,9 +335,9 @@ function ProductHeader() {
 
 function ValueCard({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4">
-      <h2 className="text-sm font-semibold text-[#14232b]">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-[#5d7079]">{text}</p>
+    <div className="rounded-2xl border border-[#e5ded5] bg-[#fffaf4] p-5 shadow-[0_10px_28px_rgba(54,42,31,0.04)]">
+      <h2 className="text-sm font-semibold text-[#1f2d33]">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-[#667774]">{text}</p>
     </div>
   );
 }
@@ -337,16 +349,16 @@ function WorkflowSteps() {
     ["Step 3", "Review claim readiness report"],
   ];
   return (
-    <section className="rounded-xl border border-[#dbe3e7] bg-white p-4">
-      <div className="grid gap-3 md:grid-cols-3">
+    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-5 shadow-[0_12px_32px_rgba(54,42,31,0.04)]">
+      <div className="grid gap-4 md:grid-cols-3">
         {steps.map(([label, text]) => (
-          <div key={label} className="flex gap-3 rounded-lg bg-[#f5f7f8] p-4">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1f6f63] text-sm font-semibold text-white">
+          <div key={label} className="flex gap-3 rounded-xl bg-[#f7f4ef] p-4">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#245c52] text-sm font-semibold text-white">
               {label.replace("Step ", "")}
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#60757e]">{label}</p>
-              <p className="mt-1 text-sm font-medium text-[#24353d]">{text}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{label}</p>
+              <p className="mt-1 text-sm font-medium text-[#34464a]">{text}</p>
             </div>
           </div>
         ))}
@@ -373,20 +385,20 @@ function InputPanel({
   onSubmit: () => void;
 }) {
   return (
-    <section className="rounded-xl border border-[#dbe3e7] bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#60757e]">Step 1</p>
-        <h2 className="mt-1 text-xl font-semibold text-[#14232b]">Synthetic Operative Note</h2>
-        <p className="mt-2 text-sm leading-6 text-[#5d7079]">
+        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a8a88]">Step 1</p>
+        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Synthetic Operative Note</h2>
+        <p className="mt-2 text-sm leading-6 text-[#667774]">
           Use an example note or paste your own synthetic note. The system will extract procedures, suggest CPT codes, check billing risks, and estimate reimbursement.
         </p>
       </div>
 
-      <label className="mt-5 block text-sm font-semibold text-[#24353d]">Example note</label>
+      <label className="mt-6 block text-sm font-semibold text-[#34464a]">Example note</label>
       <select
         value={selectedExample}
         onChange={(event) => onSelectExample(event.target.value)}
-        className="mt-2 h-11 w-full rounded-lg border border-[#cbd7dd] bg-white px-3 text-sm outline-none focus:border-[#1f6f63] focus:ring-2 focus:ring-[#c8e1db]"
+        className="mt-2 h-11 w-full rounded-xl border border-[#d8d0c4] bg-[#fffefb] px-3 text-sm outline-none focus:border-[#245c52] focus:ring-2 focus:ring-[#d6e5df]"
       >
         {examples.map((example) => (
           <option key={example.id} value={example.id}>
@@ -399,9 +411,9 @@ function InputPanel({
         value={noteText}
         onChange={(event) => onChangeNote(event.target.value)}
         maxLength={20000}
-        className="mt-4 min-h-[390px] w-full resize-y rounded-lg border border-[#cbd7dd] bg-[#fbfcfd] p-4 font-mono text-sm leading-6 outline-none focus:border-[#1f6f63] focus:ring-2 focus:ring-[#c8e1db]"
+        className="mt-4 min-h-[410px] w-full resize-y rounded-xl border border-[#d8d0c4] bg-[#fffefb] p-4 font-mono text-sm leading-6 outline-none focus:border-[#245c52] focus:ring-2 focus:ring-[#d6e5df]"
       />
-      <div className="mt-3 flex items-center justify-between gap-4 text-xs text-[#6b7e87]">
+      <div className="mt-3 flex items-center justify-between gap-4 text-xs text-[#71817d]">
         <span>{noteText.length.toLocaleString()} / 20,000 characters</span>
         <span>No PHI</span>
       </div>
@@ -410,12 +422,59 @@ function InputPanel({
         type="button"
         onClick={onSubmit}
         disabled={loading}
-        className="mt-5 w-full rounded-lg bg-[#1f6f63] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#185b51] disabled:cursor-not-allowed disabled:bg-[#8fb5ad]"
+        className="mt-6 w-full rounded-xl bg-[#245c52] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(36,92,82,0.18)] hover:bg-[#1e4f47] disabled:cursor-not-allowed disabled:bg-[#9bb5ad]"
       >
         {loading ? "Analyzing note..." : "Analyze Note for Billing"}
       </button>
 
-      {error ? <div className="mt-4 rounded-lg border border-[#f0b5a8] bg-[#fff3f0] p-3 text-sm font-medium text-[#a83220]">{error}</div> : null}
+      {error ? <div className="mt-4 rounded-xl border border-[#e6c0b5] bg-[#fbefeb] p-3 text-sm font-medium text-[#8f3b2d]">{error}</div> : null}
+    </section>
+  );
+}
+
+function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; loading: boolean; complete: boolean }) {
+  const checks = [
+    "Extracting procedures",
+    "Mapping CPT candidates",
+    "Checking documentation and billing risks",
+    "Estimating reimbursement",
+    "Calculating claim readiness",
+  ];
+
+  if (!visible) {
+    return (
+      <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_12px_32px_rgba(54,42,31,0.05)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7a8a88]">Step 2</p>
+        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Billing analysis will run here</h2>
+        <p className="mt-2 text-sm leading-6 text-[#667774]">After you analyze a note, this panel will show the review workflow before the report appears.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-[#d8e2dc] bg-[#fbfdfb] p-6 shadow-[0_14px_36px_rgba(39,78,70,0.08)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#607a73]">Step 2</p>
+          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">{loading ? "Running billing analysis" : complete ? "Billing analysis completed" : "Billing analysis ready"}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#667774]">Simulating a billing operations review workflow.</p>
+        </div>
+        <StatusBadge status={loading ? "Running" : "Ready"} />
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        {checks.map((item, index) => (
+          <div key={item} className="flex items-center gap-3 rounded-xl bg-white/80 px-4 py-3 text-sm text-[#34464a]">
+            <span
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                loading && index > 1 ? "bg-[#edf0ec] text-[#84908c]" : "bg-[#dcebe5] text-[#245c52]"
+              }`}
+            >
+              {loading && index > 1 ? "…" : "✓"}
+            </span>
+            {item}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -424,12 +483,12 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
   const topCode = report?.cpt_candidates[0];
   const reviewItems = (report?.audit_findings ?? []).filter((finding) => finding.severity !== "info");
   return (
-    <section className="rounded-xl border border-[#dbe3e7] bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#60757e]">Step 3</p>
-          <h2 className="mt-1 text-xl font-semibold text-[#14232b]">Claim Readiness Report</h2>
-          <p className="mt-2 text-sm leading-6 text-[#5d7079]">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a8a88]">Step 3</p>
+          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Claim Readiness Report</h2>
+          <p className="mt-2 text-sm leading-6 text-[#667774]">
             A score estimating how safe this note is to code and submit based on confidence, audit issues, and documentation completeness.
           </p>
         </div>
@@ -438,21 +497,21 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
       {report ? (
         <>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryMetric label="Claim Status" value={report.report.claim_readiness_status} />
             <SummaryMetric label="Primary CPT" value={topCode?.code ?? "None"} detail={topCode?.description} />
             <SummaryMetric label="Estimated Reimbursement" value={formatCurrency(report.total_estimated_reimbursement)} />
             <SummaryMetric label="Main Issue" value={report.report.main_issue ?? mainIssue(reviewItems)} />
           </div>
-          <div className="mt-4 rounded-lg border border-[#cbd7dd] bg-[#f5f7f8] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#60757e]">Recommended action</p>
-            <p className="mt-2 text-base font-semibold text-[#14232b]">{report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status)}</p>
+          <div className="mt-5 rounded-xl border border-[#d8e2dc] bg-[#f2f8f5] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#607a73]">Recommended action</p>
+            <p className="mt-2 text-base font-semibold text-[#1f2d33]">{report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status)}</p>
           </div>
-          <div className="mt-4 rounded-lg bg-[#fbfcfd] p-4">
-            <p className="text-sm leading-6 text-[#4d626d]">{report.report.claim_readiness_explanation}</p>
-            <ul className="mt-3 grid gap-2 text-sm text-[#24353d] sm:grid-cols-2">
+          <div className="mt-4 rounded-xl bg-[#f7f4ef] p-4">
+            <p className="text-sm leading-6 text-[#586b69]">{report.report.claim_readiness_explanation}</p>
+            <ul className="mt-3 grid gap-2 text-sm text-[#34464a] sm:grid-cols-2">
               {(report.report.claim_readiness_reasons ?? fallbackReasons(report)).map((reason) => (
-                <li key={reason} className="rounded-md bg-white px-3 py-2">
+                <li key={reason} className="rounded-lg bg-[#fffdfa] px-3 py-2">
                   {reason}
                 </li>
               ))}
@@ -469,8 +528,8 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 function KeyFindings({ report }: { report: AnalysisReport | null }) {
   if (!report) {
     return (
-      <section className="rounded-xl border border-[#dbe3e7] bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-[#14232b]">Key Findings</h2>
+      <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
+        <h2 className="text-lg font-semibold text-[#1f2d33]">Key Findings</h2>
         <FriendlyEmpty title="No findings yet." text="Run an analysis to see procedures, suggested codes, risks, and reimbursement impact." />
       </section>
     );
@@ -479,9 +538,9 @@ function KeyFindings({ report }: { report: AnalysisReport | null }) {
   const reviewItems = report.audit_findings.filter((finding) => finding.severity !== "info");
   const topCode = report.cpt_candidates[0];
   return (
-    <section className="rounded-xl border border-[#dbe3e7] bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-[#14232b]">Key Findings</h2>
-      <div className="mt-4 space-y-3">
+    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
+      <h2 className="text-lg font-semibold text-[#1f2d33]">Key Findings</h2>
+      <div className="mt-5 space-y-3">
         <PlainFinding label="Procedure identified" value={report.extracted_procedures.map((item) => item.name).join(", ") || "None"} />
         <PlainFinding label="Primary billing code" value={topCode ? `${topCode.code} - ${topCode.description}` : "No code identified"} />
         <PlainFinding label="Main risk" value={report.report.main_issue ?? mainIssue(reviewItems)} />
@@ -498,7 +557,7 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
-              <tr className="border-b border-[#dbe3e7] text-xs uppercase tracking-[0.08em] text-[#60757e]">
+              <tr className="border-b border-[#e4ddd2] text-xs uppercase tracking-[0.08em] text-[#7a8a88]">
                 <th className="py-3 pr-4">CPT</th>
                 <th className="py-3 pr-4">What it represents</th>
                 <th className="py-3 pr-4">Confidence</th>
@@ -508,11 +567,11 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
             </thead>
             <tbody>
               {report.cpt_candidates.map((candidate) => (
-                <tr key={`${candidate.code}-${candidate.procedure_name}`} className="border-b border-[#edf1f3]">
-                  <td className="py-3 pr-4 font-mono font-semibold text-[#14232b]">{candidate.code}</td>
+                <tr key={`${candidate.code}-${candidate.procedure_name}`} className="border-b border-[#f0e9df]">
+                  <td className="py-3 pr-4 font-mono font-semibold text-[#1f2d33]">{candidate.code}</td>
                   <td className="py-3 pr-4">
-                    <p className="font-medium text-[#24353d]">{candidate.procedure_name}</p>
-                    <p className="mt-1 text-xs leading-5 text-[#60757e]">{candidate.description}</p>
+                    <p className="font-medium text-[#34464a]">{candidate.procedure_name}</p>
+                    <p className="mt-1 text-xs leading-5 text-[#71817d]">{candidate.description}</p>
                   </td>
                   <td className="py-3 pr-4">{Math.round(candidate.confidence * 100)}%</td>
                   <td className="py-3 pr-4">{candidate.modifiers.length ? candidate.modifiers.join(", ") : "Needs clarification"}</td>
@@ -535,17 +594,17 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
       {report ? (
         <div className="space-y-3">
           {report.audit_findings.map((finding, index) => (
-            <div key={`${finding.category}-${index}`} className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4">
+            <div key={`${finding.category}-${index}`} className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-semibold text-[#24353d]">{finding.title ?? findingTitle(finding.category)}</p>
-                  <p className="mt-1 text-sm leading-6 text-[#5d7079]">{finding.explanation ?? finding.message}</p>
+                  <p className="font-semibold text-[#34464a]">{finding.title ?? findingTitle(finding.category)}</p>
+                  <p className="mt-1 text-sm leading-6 text-[#667774]">{finding.explanation ?? finding.message}</p>
                 </div>
                 <StatusBadge status={finding.severity === "high" ? "High Risk" : finding.severity === "medium" ? "Needs Review" : "Ready"} />
               </div>
-              <div className="mt-3 rounded-md bg-white px-3 py-2 text-sm">
-                <span className="font-semibold text-[#24353d]">Recommended action: </span>
-                <span className="text-[#4d626d]">{finding.suggested_action ?? finding.recommendation}</span>
+              <div className="mt-3 rounded-lg bg-[#fffdfa] px-3 py-2 text-sm">
+                <span className="font-semibold text-[#34464a]">Recommended action: </span>
+                <span className="text-[#586b69]">{finding.suggested_action ?? finding.recommendation}</span>
               </div>
             </div>
           ))}
@@ -620,10 +679,10 @@ function FinalReport({
       {report ? (
         <>
           <div className="mb-3 flex flex-wrap gap-2">
-            <button type="button" onClick={onCopy} className="rounded-lg border border-[#cbd7dd] px-3 py-2 text-sm font-semibold text-[#24353d] hover:bg-[#f5f7f8]">
+            <button type="button" onClick={onCopy} className="rounded-xl border border-[#d8d0c4] px-3 py-2 text-sm font-semibold text-[#34464a] hover:bg-[#f7f4ef]">
               {copyState}
             </button>
-            <button type="button" onClick={onDownload} className="rounded-lg bg-[#14232b] px-3 py-2 text-sm font-semibold text-white hover:bg-[#24353d]">
+            <button type="button" onClick={onDownload} className="rounded-xl bg-[#1f2d33] px-3 py-2 text-sm font-semibold text-white hover:bg-[#34464a]">
               Download JSON
             </button>
           </div>
@@ -654,13 +713,13 @@ function RecentAnalyses({
               key={item.id}
               type="button"
               onClick={() => onLoad(item.id)}
-              className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4 text-left hover:border-[#1f6f63]"
+              className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4 text-left hover:border-[#86aaa0]"
             >
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-semibold text-[#24353d]">{item.title}</p>
-                <span className="font-mono text-xs text-[#60757e]">{item.top_cpt_code ?? "No CPT"}</span>
+                <p className="text-sm font-semibold text-[#34464a]">{item.title}</p>
+                <span className="font-mono text-xs text-[#71817d]">{item.top_cpt_code ?? "No CPT"}</span>
               </div>
-              <p className="mt-2 text-xs text-[#60757e]">{new Date(item.created_at).toLocaleString()}</p>
+              <p className="mt-2 text-xs text-[#71817d]">{new Date(item.created_at).toLocaleString()}</p>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                 <StatusBadge status={item.claim_readiness_status} />
                 <span className="font-semibold">{formatCurrency(item.total_reimbursement)}</span>
@@ -677,50 +736,50 @@ function RecentAnalyses({
 
 function Disclosure({ title, open, onToggle, children }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-[#dbe3e7] bg-white shadow-sm">
+    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] shadow-[0_12px_32px_rgba(54,42,31,0.05)]">
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-5 py-4 text-left">
-        <span className="text-base font-semibold text-[#14232b]">{title}</span>
-        <span className="text-sm font-semibold text-[#1f6f63]">{open ? "Hide" : "Show"}</span>
+        <span className="text-base font-semibold text-[#1f2d33]">{title}</span>
+        <span className="text-sm font-semibold text-[#245c52]">{open ? "Hide" : "Show"}</span>
       </button>
-      {open ? <div className="border-t border-[#eef2f4] p-5">{children}</div> : null}
+      {open ? <div className="border-t border-[#eee7dd] p-5">{children}</div> : null}
     </section>
   );
 }
 
 function SectionCard({ title, explainer, children }: { title: string; explainer: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-[#dbe3e7] bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-[#14232b]">{title}</h2>
-      <p className="mt-1 text-sm leading-6 text-[#5d7079]">{explainer}</p>
-      <div className="mt-4">{children}</div>
+    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
+      <h2 className="text-lg font-semibold text-[#1f2d33]">{title}</h2>
+      <p className="mt-1 text-sm leading-6 text-[#667774]">{explainer}</p>
+      <div className="mt-5">{children}</div>
     </section>
   );
 }
 
 function SummaryMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#60757e]">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-[#14232b]">{value}</p>
-      {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#60757e]">{detail}</p> : null}
+    <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-[#1f2d33]">{value}</p>
+      {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#71817d]">{detail}</p> : null}
     </div>
   );
 }
 
 function PlainFinding({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-[#f5f7f8] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#60757e]">{label}</p>
-      <p className="mt-2 text-sm leading-6 text-[#24353d]">{value}</p>
+    <div className="rounded-xl bg-[#f7f4ef] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{label}</p>
+      <p className="mt-2 text-sm leading-6 text-[#34464a]">{value}</p>
     </div>
   );
 }
 
 function FriendlyEmpty({ title, text }: { title: string; text: string }) {
   return (
-    <div className="mt-4 rounded-lg border border-dashed border-[#cbd7dd] bg-[#fbfcfd] p-5">
-      <p className="font-semibold text-[#24353d]">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-[#60757e]">{text}</p>
+    <div className="mt-4 rounded-xl border border-dashed border-[#d8d0c4] bg-[#fffaf4] p-5">
+      <p className="font-semibold text-[#34464a]">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-[#71817d]">{text}</p>
     </div>
   );
 }
@@ -728,12 +787,12 @@ function FriendlyEmpty({ title, text }: { title: string; text: string }) {
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase();
   const styles = normalized.includes("high")
-    ? "border-[#f0b5a8] bg-[#fff3f0] text-[#a83220]"
+    ? "border-[#e7bdb4] bg-[#fbefeb] text-[#8f3b2d]"
     : normalized.includes("review") || normalized.includes("running")
-      ? "border-[#edd29e] bg-[#fff8e8] text-[#8a5a12]"
+      ? "border-[#e4cfa8] bg-[#fbf3e4] text-[#7a5724]"
       : normalized.includes("ready")
-        ? "border-[#b8d8d0] bg-[#edf7f4] text-[#176153]"
-        : "border-[#dbe3e7] bg-[#f5f7f8] text-[#60757e]";
+        ? "border-[#c4dad2] bg-[#edf6f2] text-[#245c52]"
+        : "border-[#e4ddd2] bg-[#f7f4ef] text-[#71817d]";
   return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${styles}`}>{status}</span>;
 }
 
@@ -747,16 +806,16 @@ function readableCategory(value: string) {
 
 function EvidenceGroup({ title, rows }: { title: string; rows: Array<{ heading: string; body: string; meta?: string }> }) {
   return (
-    <div className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4">
-      <h3 className="font-semibold text-[#14232b]">{title}</h3>
+    <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+      <h3 className="font-semibold text-[#1f2d33]">{title}</h3>
       <div className="mt-3 space-y-3">
         {rows.map((row, index) => (
-          <div key={`${row.heading}-${index}`} className="rounded-md bg-white p-3">
+          <div key={`${row.heading}-${index}`} className="rounded-lg bg-[#fffdfa] p-3">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold text-[#24353d]">{row.heading}</p>
-              {row.meta ? <span className="text-xs text-[#60757e]">{row.meta}</span> : null}
+              <p className="text-sm font-semibold text-[#34464a]">{row.heading}</p>
+              {row.meta ? <span className="text-xs text-[#71817d]">{row.meta}</span> : null}
             </div>
-            <p className="mt-2 text-sm leading-6 text-[#5d7079]">{row.body}</p>
+            <p className="mt-2 text-sm leading-6 text-[#667774]">{row.body}</p>
           </div>
         ))}
       </div>
