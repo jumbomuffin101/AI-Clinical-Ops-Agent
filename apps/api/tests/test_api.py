@@ -82,6 +82,23 @@ def test_submit_note_and_get_analysis(client):
     export_response = client.get(f"/api/analyses/{created['id']}/export")
     assert export_response.status_code == 200
     assert export_response.json()["claim_readiness"]["score"] is not None
+    assert created["report"]["recommended_action"]
+
+
+def test_missing_laterality_is_not_ready(client):
+    note = (
+        "Title: Open inguinal hernia repair with missing laterality. Procedure: Open inguinal hernia repair with mesh. "
+        "Operative note: The hernia sac was reduced and mesh repair was completed. The note does not clearly document "
+        "left or right laterality."
+    )
+    response = client.post("/api/notes", json={"title": "Missing laterality", "note_text": note})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] != "Ready"
+    assert body["report"]["main_issue"] == "Missing laterality"
+    assert body["report"]["recommended_action"] == "Clarify documentation before submission."
+    assert body["cpt_candidates"][0]["modifiers"] == []
+    assert any(finding["category"] == "missing_laterality" for finding in body["audit_findings"])
 
 
 def test_invalid_note_input_returns_readable_error(client):

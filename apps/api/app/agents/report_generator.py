@@ -21,6 +21,9 @@ class ReportGenerator:
             "claim_readiness_score": readiness["score"],
             "claim_readiness_status": readiness["status"],
             "claim_readiness_explanation": readiness["explanation"],
+            "claim_readiness_reasons": readiness["reasons"],
+            "recommended_action": readiness["recommended_action"],
+            "main_issue": readiness["main_issue"],
             "total_estimated_reimbursement": total,
             "procedure_count": len(procedures),
             "audit_issue_count": len(blocking),
@@ -40,44 +43,41 @@ class ReportGenerator:
         candidates: list[CPTCodeCandidate],
         findings: list[AuditFinding],
         estimates: list[ReimbursementEstimate],
-    ) -> dict[str, str | int]:
+    ) -> dict:
         if not candidates:
             return {
                 "score": 0,
                 "status": "High Risk",
                 "status_key": "high_risk",
-                "explanation": "No CPT candidates were generated.",
+                "explanation": "Confidence is based on procedure match strength, documentation completeness, guideline support, and audit risk.",
+                "reasons": ["No CPT candidates were generated.", "A coder should review the note manually."],
+                "recommended_action": "Do not submit until billing conflicts or documentation gaps are resolved.",
+                "main_issue": "Unsupported procedure",
             }
 
         avg_confidence = sum(candidate.confidence for candidate in candidates) / len(candidates)
         score = int(avg_confidence * 100)
-        reasons = [f"Average CPT confidence contributes {score} base points."]
+        reasons: list[str] = []
 
         severity_penalties = {"high": 28, "medium": 12, "low": 6, "info": 0}
-        category_penalties = {"bundling_conflict": 8, "unsupported_code": 8}
+        category_penalties = {"bundling_conflict": 8, "unsupported_code": 8, "missing_laterality": 10}
         for finding in findings:
             penalty = severity_penalties.get(finding.severity, 8) + category_penalties.get(finding.category, 0)
             score -= penalty
-            if penalty:
-                reasons.append(f"{finding.category.replace('_', ' ')} penalty: -{penalty}.")
 
         unsupported_count = sum(1 for candidate in candidates if not candidate.supported_by_docs or candidate.code == "99999")
         if unsupported_count:
             score -= unsupported_count * 18
-            reasons.append(f"Unsupported CPT candidate penalty: -{unsupported_count * 18}.")
 
-        missing_modifier_count = sum(1 for finding in findings if finding.category == "missing_modifier")
-        if missing_modifier_count:
-            score -= missing_modifier_count * 10
-            reasons.append(f"Missing modifier penalty: -{missing_modifier_count * 10}.")
+        missing_laterality_count = sum(1 for finding in findings if finding.category == "missing_laterality")
+        if missing_laterality_count:
+            score -= missing_laterality_count * 10
 
         zero_reimbursement_count = sum(1 for estimate in estimates if estimate.allowed_amount <= 0)
         if zero_reimbursement_count:
             score -= zero_reimbursement_count * 8
-            reasons.append(f"Missing fee schedule penalty: -{zero_reimbursement_count * 8}.")
         else:
             score += 5
-            reasons.append("All CPT candidates matched the local fee schedule: +5.")
 
         score = max(0, min(100, score))
         if score >= 85:
@@ -90,9 +90,52 @@ class ReportGenerator:
             status = "High Risk"
             status_key = "high_risk"
 
+        categories = {finding.category for finding in findings if finding.severity != "info"}
+        if "bundling_conflict" in categories:
+            main_issue = "Bundling conflict"
+        elif "missing_laterality" in categories:
+            main_issue = "Missing laterality"
+        elif "low_confidence" in categories:
+            main_issue = "Ambiguous documentation"
+        elif "unsupported_code" in categories:
+            main_issue = "Unsupported procedure"
+        else:
+            main_issue = "No major issues"
+
+        if status == "Ready":
+            recommended_action = "Proceed with standard billing review."
+        elif status == "Needs Review":
+            recommended_action = "Clarify documentation before submission."
+        else:
+            recommended_action = "Do not submit until billing conflicts or documentation gaps are resolved."
+
+        if avg_confidence >= 0.85:
+            reasons.append("Strong procedure match.")
+        else:
+            reasons.append("Procedure match needs review.")
+        if all(candidate.supported_by_docs for candidate in candidates):
+            reasons.append("Supporting guideline found.")
+        else:
+            reasons.append("Missing supporting guideline for at least one CPT candidate.")
+        if missing_laterality_count:
+            reasons.append("Documentation missing laterality.")
+        elif any(finding.category == "low_confidence" for finding in findings):
+            reasons.append("Documentation is ambiguous.")
+        else:
+            reasons.append("Documentation appears complete for the demo checks.")
+        if any(finding.severity == "high" for finding in findings):
+            reasons.append("Audit risk high.")
+        elif any(finding.severity == "medium" for finding in findings):
+            reasons.append("Audit risk medium.")
+        else:
+            reasons.append("Audit risk low.")
+
         return {
             "score": score,
             "status": status,
             "status_key": status_key,
-            "explanation": " ".join(reasons),
+            "explanation": "Confidence is based on procedure match strength, documentation completeness, guideline support, and audit risk.",
+            "reasons": reasons,
+            "recommended_action": recommended_action,
+            "main_issue": main_issue,
         }

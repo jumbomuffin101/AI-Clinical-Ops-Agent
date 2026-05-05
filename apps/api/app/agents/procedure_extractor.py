@@ -8,6 +8,7 @@ class ProcedureExtractor:
 
     def run(self, note_text: str) -> list[ExtractedProcedure]:
         text = note_text.lower()
+        laterality = self._laterality(text)
         procedures: list[ExtractedProcedure] = []
 
         if "av fistula" in text or "arteriovenous fistula" in text:
@@ -16,7 +17,7 @@ class ProcedureExtractor:
                     name="AV fistula creation",
                     body_site="upper extremity",
                     approach="open",
-                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    laterality=laterality,
                     evidence="Operative note describes an anastomosis between artery and vein for dialysis access.",
                     confidence=0.93,
                 )
@@ -49,7 +50,7 @@ class ProcedureExtractor:
                     name="Femoral endarterectomy",
                     body_site="common femoral artery",
                     approach="open",
-                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    laterality=laterality,
                     evidence="Operative note describes plaque removal from the femoral artery.",
                     confidence=0.91,
                 )
@@ -60,7 +61,7 @@ class ProcedureExtractor:
                     name="Carotid endarterectomy",
                     body_site="carotid artery",
                     approach="open",
-                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    laterality=laterality,
                     evidence="Operative note describes plaque removal from the carotid artery.",
                     confidence=0.9,
                 )
@@ -82,7 +83,7 @@ class ProcedureExtractor:
                     name="Open inguinal hernia repair",
                     body_site="inguinal region",
                     approach="open",
-                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    laterality=laterality,
                     evidence="Operative note describes open inguinal hernia repair with mesh placement.",
                     confidence=0.88,
                 )
@@ -104,7 +105,7 @@ class ProcedureExtractor:
                     name="Lower extremity angiogram",
                     body_site="lower extremity arteries",
                     approach="percutaneous",
-                    laterality="left" if "left" in text else "right" if "right" in text else None,
+                    laterality=laterality,
                     evidence="Operative note describes catheter-based lower extremity angiography.",
                     confidence=0.84,
                 )
@@ -123,3 +124,22 @@ class ProcedureExtractor:
             )
 
         return procedures
+
+    @staticmethod
+    def _laterality(text: str) -> str | None:
+        uncertainty_phrases = [
+            "left or right",
+            "right or left",
+            "does not clearly document",
+            "not clearly document",
+            "missing laterality",
+            "laterality is missing",
+            "without laterality",
+        ]
+        if any(phrase in text for phrase in uncertainty_phrases):
+            return None
+        if "left" in text and "right" not in text:
+            return "left"
+        if "right" in text and "left" not in text:
+            return "right"
+        return None

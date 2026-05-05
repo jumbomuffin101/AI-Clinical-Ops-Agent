@@ -29,11 +29,14 @@ type CPTCodeCandidate = {
 };
 
 type AuditFinding = {
+  title?: string | null;
   severity: string;
   category: string;
   message: string;
+  explanation?: string | null;
   related_code?: string | null;
   recommendation: string;
+  suggested_action?: string | null;
   evidence_used: EvidenceSnippet[];
 };
 
@@ -56,6 +59,9 @@ type AnalysisReport = {
     claim_readiness_score: number;
     claim_readiness_status: string;
     claim_readiness_explanation: string;
+    claim_readiness_reasons?: string[];
+    recommended_action?: string;
+    main_issue?: string;
     audit_issue_count: number;
     procedure_count: number;
     total_estimated_reimbursement: number;
@@ -267,7 +273,7 @@ export default function Home() {
           <CptCandidates report={report} />
           <AuditFindings report={report} />
 
-          <Disclosure title="Show evidence" open={showEvidence} onToggle={() => setShowEvidence((value) => !value)}>
+          <Disclosure title="Show why this result?" open={showEvidence} onToggle={() => setShowEvidence((value) => !value)}>
             <EvidenceUsed report={report} />
           </Disclosure>
 
@@ -294,6 +300,9 @@ function ProductHeader() {
             <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#14232b]">AI Clinical Ops Agent</h1>
             <p className="mt-3 max-w-4xl text-base leading-7 text-[#4d626d]">
               Turn a synthetic operative note into CPT candidates, billing risk flags, reimbursement estimates, and a claim readiness report.
+            </p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#60757e]">
+              Simulates how a billing operations team reviews operative notes before CPT submission.
             </p>
           </div>
           <div className="rounded-lg border border-[#f0c8a2] bg-[#fff8ef] p-4">
@@ -403,7 +412,7 @@ function InputPanel({
         disabled={loading}
         className="mt-5 w-full rounded-lg bg-[#1f6f63] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#185b51] disabled:cursor-not-allowed disabled:bg-[#8fb5ad]"
       >
-        {loading ? "Generating report..." : "Generate Claim Readiness Report"}
+        {loading ? "Analyzing note..." : "Analyze Note for Billing"}
       </button>
 
       {error ? <div className="mt-4 rounded-lg border border-[#f0b5a8] bg-[#fff3f0] p-3 text-sm font-medium text-[#a83220]">{error}</div> : null}
@@ -430,12 +439,25 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
       {report ? (
         <>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryMetric label="Is this claim ready?" value={report.report.claim_readiness_status} />
-            <SummaryMetric label="Most likely CPT" value={topCode?.code ?? "None"} detail={topCode?.description} />
-            <SummaryMetric label="Estimated reimbursement" value={formatCurrency(report.total_estimated_reimbursement)} />
-            <SummaryMetric label="Needs review" value={reviewItems.length ? `${reviewItems.length} item${reviewItems.length === 1 ? "" : "s"}` : "No major issues"} />
+            <SummaryMetric label="Claim Status" value={report.report.claim_readiness_status} />
+            <SummaryMetric label="Primary CPT" value={topCode?.code ?? "None"} detail={topCode?.description} />
+            <SummaryMetric label="Estimated Reimbursement" value={formatCurrency(report.total_estimated_reimbursement)} />
+            <SummaryMetric label="Main Issue" value={report.report.main_issue ?? mainIssue(reviewItems)} />
           </div>
-          <p className="mt-4 rounded-lg bg-[#f5f7f8] p-4 text-sm leading-6 text-[#4d626d]">{report.report.claim_readiness_explanation}</p>
+          <div className="mt-4 rounded-lg border border-[#cbd7dd] bg-[#f5f7f8] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#60757e]">Recommended action</p>
+            <p className="mt-2 text-base font-semibold text-[#14232b]">{report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status)}</p>
+          </div>
+          <div className="mt-4 rounded-lg bg-[#fbfcfd] p-4">
+            <p className="text-sm leading-6 text-[#4d626d]">{report.report.claim_readiness_explanation}</p>
+            <ul className="mt-3 grid gap-2 text-sm text-[#24353d] sm:grid-cols-2">
+              {(report.report.claim_readiness_reasons ?? fallbackReasons(report)).map((reason) => (
+                <li key={reason} className="rounded-md bg-white px-3 py-2">
+                  {reason}
+                </li>
+              ))}
+            </ul>
+          </div>
         </>
       ) : (
         <FriendlyEmpty title="Your report will appear here after analysis." text="Choose an example note to see how the system works." />
@@ -455,13 +477,15 @@ function KeyFindings({ report }: { report: AnalysisReport | null }) {
   }
 
   const reviewItems = report.audit_findings.filter((finding) => finding.severity !== "info");
+  const topCode = report.cpt_candidates[0];
   return (
     <section className="rounded-xl border border-[#dbe3e7] bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-[#14232b]">Key Findings</h2>
       <div className="mt-4 space-y-3">
-        <PlainFinding label="Procedures found" value={report.extracted_procedures.map((item) => item.name).join(", ") || "None"} />
-        <PlainFinding label="Billing risks" value={reviewItems.length ? reviewItems.map((item) => readableCategory(item.category)).join(", ") : "No major billing risks found"} />
-        <PlainFinding label="Output" value="Structured report ready for billing or operations review" />
+        <PlainFinding label="Procedure identified" value={report.extracted_procedures.map((item) => item.name).join(", ") || "None"} />
+        <PlainFinding label="Primary billing code" value={topCode ? `${topCode.code} - ${topCode.description}` : "No code identified"} />
+        <PlainFinding label="Main risk" value={report.report.main_issue ?? mainIssue(reviewItems)} />
+        <PlainFinding label="Recommended next step" value={report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status)} />
       </div>
     </section>
   );
@@ -491,7 +515,7 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
                     <p className="mt-1 text-xs leading-5 text-[#60757e]">{candidate.description}</p>
                   </td>
                   <td className="py-3 pr-4">{Math.round(candidate.confidence * 100)}%</td>
-                  <td className="py-3 pr-4">{candidate.modifiers.length ? candidate.modifiers.join(", ") : "None"}</td>
+                  <td className="py-3 pr-4">{candidate.modifiers.length ? candidate.modifiers.join(", ") : "Needs clarification"}</td>
                   <td className="py-3 pr-4">{candidate.supported_by_docs ? "Reference found" : "Needs support"}</td>
                 </tr>
               ))}
@@ -514,12 +538,15 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
             <div key={`${finding.category}-${index}`} className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-semibold text-[#24353d]">{readableCategory(finding.category)}</p>
-                  <p className="mt-1 text-sm leading-6 text-[#5d7079]">{finding.message}</p>
+                  <p className="font-semibold text-[#24353d]">{finding.title ?? findingTitle(finding.category)}</p>
+                  <p className="mt-1 text-sm leading-6 text-[#5d7079]">{finding.explanation ?? finding.message}</p>
                 </div>
                 <StatusBadge status={finding.severity === "high" ? "High Risk" : finding.severity === "medium" ? "Needs Review" : "Ready"} />
               </div>
-              <p className="mt-3 text-sm font-medium text-[#24353d]">{finding.recommendation}</p>
+              <div className="mt-3 rounded-md bg-white px-3 py-2 text-sm">
+                <span className="font-semibold text-[#24353d]">Recommended action: </span>
+                <span className="text-[#4d626d]">{finding.suggested_action ?? finding.recommendation}</span>
+              </div>
             </div>
           ))}
         </div>
@@ -531,39 +558,44 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
 }
 
 function EvidenceUsed({ report }: { report: AnalysisReport | null }) {
-  const evidenceRows = report
-    ? [
-        ...report.cpt_candidates.flatMap((candidate) =>
-          candidate.evidence_used.map((evidence) => ({
-            label: `CPT ${candidate.code}`,
-            rationale: candidate.rationale,
-            ...evidence,
-          })),
-        ),
-        ...report.audit_findings.flatMap((finding) =>
-          finding.evidence_used.map((evidence) => ({
-            label: readableCategory(finding.category),
-            rationale: finding.message,
-            ...evidence,
-          })),
-        ),
-      ]
-    : [];
-
   return (
-    <SectionCard title="Evidence Used" explainer="Reference snippets that influenced the CPT and audit decisions.">
-      {evidenceRows.length ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {evidenceRows.map((row, index) => (
-            <div key={`${row.source}-${index}`} className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-semibold text-[#24353d]">{row.label}</p>
-                <span className="font-mono text-xs text-[#60757e]">{row.source}</span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-[#5d7079]">{row.snippet}</p>
-              <p className="mt-3 text-xs font-medium text-[#44616d]">{row.rationale}</p>
-            </div>
-          ))}
+    <SectionCard title="Why this result?" explainer="Shows the procedure match, risks checked, and references that supported the billing review.">
+      {report ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <EvidenceGroup
+            title="Why this CPT?"
+            rows={report.cpt_candidates.map((candidate) => ({
+              heading: `${candidate.code} - ${candidate.procedure_name}`,
+              body: candidate.rationale,
+              meta: candidate.evidence_used[0]?.source,
+            }))}
+          />
+          <EvidenceGroup
+            title="What risks were checked?"
+            rows={report.audit_findings.map((finding) => ({
+              heading: finding.title ?? findingTitle(finding.category),
+              body: finding.explanation ?? finding.message,
+              meta: finding.severity,
+            }))}
+          />
+          <EvidenceGroup
+            title="What references supported this?"
+            rows={report.cpt_candidates.flatMap((candidate) =>
+              candidate.evidence_used.length
+                ? candidate.evidence_used.map((evidence) => ({
+                    heading: evidence.source,
+                    body: evidence.snippet,
+                    meta: `CPT ${candidate.code}`,
+                  }))
+                : [
+                    {
+                      heading: `CPT ${candidate.code}`,
+                      body: "No matching reference snippet found in the local demo guidelines.",
+                      meta: "Local demo guidelines",
+                    },
+                  ],
+            )}
+          />
         </div>
       ) : (
         <FriendlyEmpty title="Evidence will appear after analysis." text="References are hidden by default to keep the first report easy to read." />
@@ -711,4 +743,57 @@ function formatCurrency(value: number) {
 
 function readableCategory(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function EvidenceGroup({ title, rows }: { title: string; rows: Array<{ heading: string; body: string; meta?: string }> }) {
+  return (
+    <div className="rounded-lg border border-[#dbe3e7] bg-[#fbfcfd] p-4">
+      <h3 className="font-semibold text-[#14232b]">{title}</h3>
+      <div className="mt-3 space-y-3">
+        {rows.map((row, index) => (
+          <div key={`${row.heading}-${index}`} className="rounded-md bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-semibold text-[#24353d]">{row.heading}</p>
+              {row.meta ? <span className="text-xs text-[#60757e]">{row.meta}</span> : null}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[#5d7079]">{row.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function recommendedAction(status: string) {
+  if (status === "Ready") return "Proceed with standard billing review.";
+  if (status === "Needs Review") return "Clarify documentation before submission.";
+  if (status === "High Risk") return "Do not submit until billing conflicts or documentation gaps are resolved.";
+  return "Run analysis to generate a recommended action.";
+}
+
+function mainIssue(findings: AuditFinding[]) {
+  const categories = findings.map((finding) => finding.category);
+  if (categories.includes("bundling_conflict")) return "Bundling conflict";
+  if (categories.includes("missing_laterality")) return "Missing laterality";
+  if (categories.includes("low_confidence")) return "Ambiguous documentation";
+  if (categories.includes("unsupported_code")) return "Unsupported procedure";
+  return "No major issues";
+}
+
+function fallbackReasons(report: AnalysisReport) {
+  return [
+    report.cpt_candidates[0]?.confidence >= 0.85 ? "Strong procedure match." : "Procedure match needs review.",
+    report.cpt_candidates.every((candidate) => candidate.supported_by_docs) ? "Supporting guideline found." : "Missing supporting guideline.",
+    (report.report.main_issue ?? "No major issues") === "No major issues" ? "Documentation appears complete for the demo checks." : `Documentation issue: ${report.report.main_issue}.`,
+    report.report.claim_readiness_status === "High Risk" ? "Audit risk high." : report.report.claim_readiness_status === "Needs Review" ? "Audit risk medium." : "Audit risk low.",
+  ];
+}
+
+function findingTitle(category: string) {
+  if (category === "bundling_conflict") return "Bundling conflict detected";
+  if (category === "low_confidence") return "Low confidence coding";
+  if (category === "missing_laterality") return "Missing laterality";
+  if (category === "unsupported_code") return "Unsupported procedure";
+  if (category === "clean_claim") return "No major billing risks found";
+  return readableCategory(category);
 }

@@ -32,7 +32,26 @@ def test_audit_findings_for_missing_laterality_modifier():
     procedures = ProcedureExtractor(MockLLMProvider()).run("Femoral endarterectomy was performed through an open incision.")
     candidates = CPTCoder(retriever).run(procedures)
     findings = BillingAuditor(retriever).run(candidates)
-    assert any(finding.category == "missing_modifier" for finding in findings)
+    assert any(finding.category == "missing_laterality" for finding in findings)
+
+
+def test_missing_laterality_does_not_assign_modifier():
+    retriever = KeywordRetriever(ROOT / "data" / "reference_docs")
+    procedures = ProcedureExtractor(MockLLMProvider()).run(
+        "Open inguinal hernia repair with mesh was performed. The note does not clearly document left or right laterality."
+    )
+    candidates = CPTCoder(retriever).run(procedures)
+    findings = BillingAuditor(retriever).run(candidates)
+    assert candidates[0].code == "49505"
+    assert candidates[0].modifiers == []
+    assert any(finding.title == "Missing laterality" for finding in findings)
+
+
+def test_retrieval_filters_irrelevant_evidence_by_family():
+    retriever = KeywordRetriever(ROOT / "data" / "reference_docs")
+    hernia_docs = retriever.retrieve("open inguinal hernia repair mesh", family="hernia")
+    assert hernia_docs
+    assert all("hernia" in str(doc["source"]) for doc in hernia_docs)
 
 
 def test_reimbursement_estimation():

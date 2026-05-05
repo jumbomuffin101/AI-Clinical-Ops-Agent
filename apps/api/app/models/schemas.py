@@ -50,11 +50,14 @@ class CPTCodeCandidate(BaseModel):
 
 class AuditFinding(BaseModel):
     id: UUID | None = None
+    title: str | None = None
     severity: str
     category: str
     message: str
+    explanation: str | None = None
     related_code: str | None = None
     recommendation: str
+    suggested_action: str | None = None
     evidence_used: list[EvidenceSnippet] = Field(default_factory=list)
 
 

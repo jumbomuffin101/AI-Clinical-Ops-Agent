@@ -96,11 +96,14 @@ class AnalysisService:
             audit_findings=[
                 {
                     "id": UUID(row.id),
+                    "title": row.title,
                     "severity": row.severity,
                     "category": row.category,
                     "message": row.message,
+                    "explanation": row.explanation,
                     "related_code": row.related_code,
                     "recommendation": row.recommendation,
+                    "suggested_action": row.suggested_action,
                     "evidence_used": row.evidence_used or [],
                 }
                 for row in analysis.audit_findings
