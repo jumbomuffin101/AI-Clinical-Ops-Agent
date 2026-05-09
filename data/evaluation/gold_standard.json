@@ -1,0 +1,65 @@
+[
+  {
+    "note_filename": "av_fistula_creation.txt",
+    "expected_primary_cpt": "36821",
+    "expected_claim_status": "Ready",
+    "expected_main_issue": "No major issues",
+    "expected_audit_findings": ["clean_claim"]
+  },
+  {
+    "note_filename": "carotid_endarterectomy.txt",
+    "expected_primary_cpt": "35301",
+    "expected_claim_status": "Ready",
+    "expected_main_issue": "No major issues",
+    "expected_audit_findings": ["clean_claim"]
+  },
+  {
+    "note_filename": "diagnostic_colonoscopy.txt",
+    "expected_primary_cpt": "45378",
+    "expected_claim_status": "Ready",
+    "expected_main_issue": "No major issues",
+    "expected_audit_findings": ["clean_claim"]
+  },
+  {
+    "note_filename": "femoral_endarterectomy.txt",
+    "expected_primary_cpt": "35371",
+    "expected_claim_status": "Ready",
+    "expected_main_issue": "No major issues",
+    "expected_audit_findings": ["clean_claim"]
+  },
+  {
+    "note_filename": "high_risk_bundled_cholecystectomy.txt",
+    "expected_primary_cpt": "47562",
+    "expected_claim_status": "High Risk",
+    "expected_main_issue": "Bundling conflict",
+    "expected_audit_findings": ["bundling_conflict"]
+  },
+  {
+    "note_filename": "laparoscopic_appendectomy.txt",
+    "expected_primary_cpt": "44970",
+    "expected_claim_status": "Ready",
+    "expected_main_issue": "No major issues",
+    "expected_audit_findings": ["clean_claim"]
+  },
+  {
+    "note_filename": "laparoscopic_cholecystectomy.txt",
+    "expected_primary_cpt": "47562",
+    "expected_claim_status": "Ready",
+    "expected_main_issue": "No major issues",
+    "expected_audit_findings": ["clean_claim"]
+  },
+  {
+    "note_filename": "lower_extremity_angiogram.txt",
+    "expected_primary_cpt": "75710",
+    "expected_claim_status": "High Risk",
+    "expected_main_issue": "Missing laterality",
+    "expected_audit_findings": ["missing_laterality"]
+  },
+  {
+    "note_filename": "open_inguinal_hernia_repair.txt",
+    "expected_primary_cpt": "49505",
+    "expected_claim_status": "Needs Review",
+    "expected_main_issue": "Missing laterality",
+    "expected_audit_findings": ["missing_laterality"]
+  }
+]

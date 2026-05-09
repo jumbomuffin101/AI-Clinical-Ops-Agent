@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from app.config import get_settings
 from app.db.session import Base, engine
 from app.models import db as _db_models
-from app.routes import health, notes
+from app.routes import evaluation, health, notes
 
 settings = get_settings()
 
@@ -75,3 +75,4 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(health.router)
 app.include_router(notes.router)
+app.include_router(evaluation.router)

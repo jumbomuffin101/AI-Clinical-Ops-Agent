@@ -21,6 +21,7 @@ The app proves that a multi-agent system can process a note end to end without r
 - Local keyword RAG over coding guideline snippets, with retrieved evidence shown in the dashboard.
 - Deterministic claim readiness score from `0-100` with `Ready`, `Needs Review`, and `High Risk` statuses.
 - Analysis history and structured JSON export endpoints.
+- Synthetic dataset evaluation with CPT match, audit finding, claim readiness, and confidence metrics.
 - Next.js dashboard with step-by-step guidance, plain-English claim summary, CPT table, audit table, expandable evidence, recent analyses, and export controls.
 - Production-ready backend foundations: Alembic migrations, health checks, integration tests, Docker deployment, and provider abstraction.
 
@@ -140,6 +141,19 @@ The API returns structured output with:
 
 See [docs/sample_analysis_output.json](docs/sample_analysis_output.json).
 
+## System Evaluation
+
+The dashboard includes a collapsible `View system evaluation` section that runs the synthetic demo dataset against `data/evaluation/gold_standard.json`.
+
+Metrics shown:
+
+- **CPT match accuracy:** whether the primary generated CPT matches the expected demo CPT.
+- **Audit finding accuracy:** whether expected audit categories such as missing laterality or bundling conflict are detected.
+- **Claim readiness accuracy:** whether the system assigns the expected `Ready`, `Needs Review`, or `High Risk` status.
+- **Average confidence:** average confidence of the primary CPT candidate across synthetic notes.
+
+This evaluation is intentionally limited. It measures consistency on known synthetic cases only; it does not prove clinical correctness, payer-specific compliance, or performance on real patient records.
+
 ## Demo Screenshots
 
 Placeholder screenshots to capture after local run or deployment:
@@ -152,6 +166,7 @@ Placeholder screenshots to capture after local run or deployment:
 - Audit warning section
 - Recent analyses panel
 - JSON export section
+- System evaluation dashboard
 
 See [docs/screenshot_checklist.md](docs/screenshot_checklist.md).
 

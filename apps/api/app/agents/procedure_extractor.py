@@ -33,7 +33,9 @@ class ProcedureExtractor:
                     confidence=0.95,
                 )
             )
-        if "cholangiogram" in text or "cholangiography" in text:
+        if ("cholangiogram" in text or "cholangiography" in text) and not any(
+            phrase in text for phrase in ["no cholangiogram", "without cholangiogram", "no cholangiography", "without cholangiography"]
+        ):
             procedures.append(
                 ExtractedProcedure(
                     name="Laparoscopic cholecystectomy with cholangiography",

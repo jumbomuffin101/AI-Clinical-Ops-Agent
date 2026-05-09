@@ -137,6 +137,7 @@ class AnalysisService:
                     top_cpt_code=top_candidate.code if top_candidate else None,
                     total_reimbursement=analysis.total_estimated_reimbursement,
                     claim_readiness_status=analysis.report.get("claim_readiness_status", analysis.report.get("claim_readiness", "Needs Review")),
+                    main_issue=analysis.report.get("main_issue"),
                 )
             )
         return items

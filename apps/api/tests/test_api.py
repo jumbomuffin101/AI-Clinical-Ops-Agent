@@ -64,6 +64,18 @@ def test_database_health(client):
     assert body["database"] == "ok"
 
 
+def test_evaluation_summary_endpoint(client):
+    response = client.get("/api/evaluation/summary")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_cases"] >= 5
+    assert "cpt_accuracy" in body
+    assert "readiness_accuracy" in body
+    assert "audit_accuracy" in body
+    assert "average_confidence" in body
+    assert body["per_case_results"]
+
+
 def test_submit_note_and_get_analysis(client):
     create_response = client.post("/api/notes", json={"title": "Integration note", "note_text": SAMPLE_NOTE})
     assert create_response.status_code == 201

@@ -90,3 +90,4 @@ class AnalysisListItem(BaseModel):
     top_cpt_code: str | None
     total_reimbursement: float
     claim_readiness_status: str
+    main_issue: str | None = None

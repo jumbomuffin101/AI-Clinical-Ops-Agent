@@ -75,6 +75,29 @@ type AnalysisHistoryItem = {
   top_cpt_code?: string | null;
   total_reimbursement: number;
   claim_readiness_status: string;
+  main_issue?: string | null;
+};
+
+type EvaluationCase = {
+  note_filename: string;
+  expected_primary_cpt: string;
+  actual_primary_cpt: string | null;
+  expected_claim_status: string;
+  actual_claim_status: string;
+  expected_main_issue: string;
+  actual_main_issue: string;
+  actual_confidence: number;
+  passed: boolean;
+};
+
+type EvaluationSummary = {
+  total_cases: number;
+  cpt_accuracy: number;
+  readiness_accuracy: number;
+  audit_accuracy: number;
+  average_confidence: number;
+  last_evaluated_at: string;
+  per_case_results: EvaluationCase[];
 };
 
 const examples = [
@@ -150,15 +173,19 @@ export default function Home() {
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [evaluation, setEvaluation] = useState<EvaluationSummary | null>(null);
+  const [evaluationLoading, setEvaluationLoading] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState("Copy JSON");
   const [showEvidence, setShowEvidence] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showEvaluation, setShowEvaluation] = useState(false);
 
   useEffect(() => {
     void loadHistory();
+    void loadEvaluation();
   }, []);
 
   function chooseExample(exampleId: string) {
@@ -183,6 +210,16 @@ export default function Home() {
     }
   }
 
+  async function loadEvaluation() {
+    setEvaluationLoading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/evaluation/summary`);
+      if (response.ok) setEvaluation(await response.json());
+    } finally {
+      setEvaluationLoading(false);
+    }
+  }
+
   async function loadAnalysis(id: string) {
     setError(null);
     const response = await fetch(`${apiBaseUrl}/api/analyses/${id}`);
@@ -194,6 +231,16 @@ export default function Home() {
     setReport(payload);
     setAnalysisStarted(true);
     setCopyState("Copy JSON");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function clearReport() {
+    setReport(null);
+    setAnalysisStarted(false);
+    setError(null);
+    setCopyState("Copy JSON");
+    setShowEvidence(false);
+    setShowJson(false);
   }
 
   async function submitNote() {
@@ -268,6 +315,8 @@ export default function Home() {
             onSelectExample={chooseExample}
             onChangeNote={setNoteText}
             onSubmit={submitNote}
+            onClear={clearReport}
+            hasReport={Boolean(report) || analysisStarted}
           />
 
           <div className="space-y-5">
@@ -278,6 +327,10 @@ export default function Home() {
         </div>
 
         <div className="mt-6 space-y-5">
+          <Disclosure title="View system evaluation" open={showEvaluation} onToggle={() => setShowEvaluation((value) => !value)}>
+            <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
+          </Disclosure>
+
           <CptCandidates report={report} />
           <AuditFindings report={report} />
 
@@ -375,6 +428,8 @@ function InputPanel({
   onSelectExample,
   onChangeNote,
   onSubmit,
+  onClear,
+  hasReport,
 }: {
   selectedExample: string;
   noteText: string;
@@ -383,6 +438,8 @@ function InputPanel({
   onSelectExample: (value: string) => void;
   onChangeNote: (value: string) => void;
   onSubmit: () => void;
+  onClear: () => void;
+  hasReport: boolean;
 }) {
   return (
     <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
@@ -426,6 +483,15 @@ function InputPanel({
       >
         {loading ? "Analyzing note..." : "Analyze Note for Billing"}
       </button>
+      {hasReport ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-3 w-full rounded-xl border border-[#d8d0c4] bg-[#fffefb] px-4 py-3 text-sm font-semibold text-[#34464a] hover:bg-[#f7f4ef]"
+        >
+          Clear report
+        </button>
+      ) : null}
 
       {error ? <div className="mt-4 rounded-xl border border-[#e6c0b5] bg-[#fbefeb] p-3 text-sm font-medium text-[#8f3b2d]">{error}</div> : null}
     </section>
@@ -588,6 +654,69 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
   );
 }
 
+function SystemEvaluation({ evaluation, loading }: { evaluation: EvaluationSummary | null; loading: boolean }) {
+  return (
+    <SectionCard
+      title="System Evaluation"
+      explainer="This evaluation uses synthetic operative notes only. It measures whether the system consistently produces the expected CPT, risk status, and audit findings for known demo cases."
+    >
+      {evaluation ? (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <SummaryMetric label="Notes evaluated" value={String(evaluation.total_cases)} />
+            <SummaryMetric label="CPT match accuracy" value={formatPercent(evaluation.cpt_accuracy)} />
+            <SummaryMetric label="Audit finding accuracy" value={formatPercent(evaluation.audit_accuracy)} />
+            <SummaryMetric label="Claim readiness accuracy" value={formatPercent(evaluation.readiness_accuracy)} />
+            <SummaryMetric label="Average confidence" value={formatPercent(evaluation.average_confidence)} />
+          </div>
+          <div className="mt-5 rounded-xl bg-[#f7f4ef] p-4">
+            <p className="text-sm font-semibold text-[#34464a]">Demo Dataset</p>
+            <p className="mt-2 text-sm leading-6 text-[#667774]">
+              These metrics compare deterministic pipeline outputs against a small gold-standard file for the included synthetic notes. They demonstrate consistency for demo cases, not clinical or billing correctness on real patient records.
+            </p>
+            <p className="mt-2 text-xs text-[#71817d]">Last evaluated: {new Date(evaluation.last_evaluated_at).toLocaleString()}</p>
+          </div>
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#e4ddd2] text-xs uppercase tracking-[0.08em] text-[#7a8a88]">
+                  <th className="py-3 pr-4">Synthetic case</th>
+                  <th className="py-3 pr-4">Expected CPT</th>
+                  <th className="py-3 pr-4">Actual CPT</th>
+                  <th className="py-3 pr-4">Expected status</th>
+                  <th className="py-3 pr-4">Actual status</th>
+                  <th className="py-3 pr-4">Main issue</th>
+                  <th className="py-3 pr-4">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {evaluation.per_case_results.map((item) => (
+                  <tr key={item.note_filename} className="border-b border-[#f0e9df]">
+                    <td className="py-3 pr-4 font-medium text-[#34464a]">{friendlyFilename(item.note_filename)}</td>
+                    <td className="py-3 pr-4 font-mono">{item.expected_primary_cpt}</td>
+                    <td className="py-3 pr-4 font-mono">{item.actual_primary_cpt ?? "-"}</td>
+                    <td className="py-3 pr-4">{item.expected_claim_status}</td>
+                    <td className="py-3 pr-4">{item.actual_claim_status}</td>
+                    <td className="py-3 pr-4">{item.actual_main_issue}</td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge status={item.passed ? "Pass" : "Fail"} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <FriendlyEmpty
+          title={loading ? "Loading synthetic evaluation..." : "Evaluation metrics are unavailable."}
+          text="The API calculates these metrics by running the synthetic notes through the same pipeline used by the dashboard."
+        />
+      )}
+    </SectionCard>
+  );
+}
+
 function AuditFindings({ report }: { report: AnalysisReport | null }) {
   return (
     <SectionCard title="Audit Findings" explainer="Documentation or billing concerns that should be reviewed before submission.">
@@ -722,7 +851,11 @@ function RecentAnalyses({
               <p className="mt-2 text-xs text-[#71817d]">{new Date(item.created_at).toLocaleString()}</p>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                 <StatusBadge status={item.claim_readiness_status} />
-                <span className="font-semibold">{formatCurrency(item.total_reimbursement)}</span>
+                <span className="font-mono text-xs text-[#71817d]">{item.top_cpt_code ?? "No CPT"}</span>
+              </div>
+              <div className="mt-3 grid gap-1 text-xs text-[#667774]">
+                <span>Main issue: {item.main_issue ?? "No major issues"}</span>
+                <span>Estimated: {formatCurrency(item.total_reimbursement)}</span>
               </div>
             </button>
           ))}
@@ -790,14 +923,24 @@ function StatusBadge({ status }: { status: string }) {
     ? "border-[#e7bdb4] bg-[#fbefeb] text-[#8f3b2d]"
     : normalized.includes("review") || normalized.includes("running")
       ? "border-[#e4cfa8] bg-[#fbf3e4] text-[#7a5724]"
-      : normalized.includes("ready")
+      : normalized.includes("ready") || normalized.includes("pass")
         ? "border-[#c4dad2] bg-[#edf6f2] text-[#245c52]"
+        : normalized.includes("fail")
+          ? "border-[#e7bdb4] bg-[#fbefeb] text-[#8f3b2d]"
         : "border-[#e4ddd2] bg-[#f7f4ef] text-[#71817d]";
   return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${styles}`}>{status}</span>;
 }
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function friendlyFilename(value: string) {
+  return value.replace(".txt", "").replaceAll("_", " ");
 }
 
 function readableCategory(value: string) {
