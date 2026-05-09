@@ -58,6 +58,8 @@ class AuditFinding(BaseModel):
     related_code: str | None = None
     recommendation: str
     suggested_action: str | None = None
+    documentation_improvement: str | None = None
+    why_it_matters: str | None = None
     evidence_used: list[EvidenceSnippet] = Field(default_factory=list)
 
 

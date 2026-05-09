@@ -110,7 +110,33 @@ def test_missing_laterality_is_not_ready(client):
     assert body["report"]["main_issue"] == "Missing laterality"
     assert body["report"]["recommended_action"] == "Clarify documentation before submission."
     assert body["cpt_candidates"][0]["modifiers"] == []
-    assert any(finding["category"] == "missing_laterality" for finding in body["audit_findings"])
+    missing_laterality = next(finding for finding in body["audit_findings"] if finding["category"] == "missing_laterality")
+    assert missing_laterality["documentation_improvement"] == "Document whether the procedure was performed on the left or right side."
+    assert "modifier" in missing_laterality["why_it_matters"]
+
+
+def test_revised_note_workflow_improves_readiness(client):
+    initial_note = (
+        "Title: Open inguinal hernia repair with missing laterality. Procedure: Open inguinal hernia repair with mesh. "
+        "Operative note: The hernia sac was reduced and mesh repair was completed. Laterality is missing from the note."
+    )
+    revised_note = (
+        "Title: Left open inguinal hernia repair. Procedure: Left open inguinal hernia repair with mesh. "
+        "Operative note: A left groin incision was made. The hernia sac was reduced and mesh repair was completed on the left side."
+    )
+
+    initial_response = client.post("/api/notes", json={"title": "Initial revision note", "note_text": initial_note})
+    revised_response = client.post("/api/notes", json={"title": "Revised revision note", "note_text": revised_note})
+
+    assert initial_response.status_code == 201
+    assert revised_response.status_code == 201
+    initial = initial_response.json()
+    revised = revised_response.json()
+    assert initial["report"]["claim_readiness_status"] != "Ready"
+    assert revised["report"]["claim_readiness_status"] == "Ready"
+    assert revised["report"]["claim_readiness_score"] > initial["report"]["claim_readiness_score"]
+    assert any(finding["category"] == "missing_laterality" for finding in initial["audit_findings"])
+    assert not any(finding["category"] == "missing_laterality" for finding in revised["audit_findings"])
 
 
 def test_invalid_note_input_returns_readable_error(client):

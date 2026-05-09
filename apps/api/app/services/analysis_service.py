@@ -104,6 +104,8 @@ class AnalysisService:
                     "related_code": row.related_code,
                     "recommendation": row.recommendation,
                     "suggested_action": row.suggested_action,
+                    "documentation_improvement": row.documentation_improvement,
+                    "why_it_matters": row.why_it_matters,
                     "evidence_used": row.evidence_used or [],
                 }
                 for row in analysis.audit_findings

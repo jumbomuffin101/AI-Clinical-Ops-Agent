@@ -85,6 +85,8 @@ class AuditFindingRecord(Base):
     related_code: Mapped[str | None] = mapped_column(String(20))
     recommendation: Mapped[str] = mapped_column(Text)
     suggested_action: Mapped[str | None] = mapped_column(Text)
+    documentation_improvement: Mapped[str | None] = mapped_column(Text)
+    why_it_matters: Mapped[str | None] = mapped_column(Text)
     evidence_used: Mapped[list[dict]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

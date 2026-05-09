@@ -44,6 +44,8 @@ class BillingAuditor:
                         explanation=f"{candidate.code} is not supported by the local demo guideline set.",
                         recommendation="Route to certified coder review before billing.",
                         suggested_action="Do not submit this code until a supported code or reference is confirmed.",
+                        documentation_improvement="Confirm the correct billable procedure and supporting reference before coding.",
+                        why_it_matters="Unsupported codes create denial and compliance risk during billing review.",
                         evidence_used=evidence_used,
                     )
                 )
@@ -58,6 +60,8 @@ class BillingAuditor:
                         explanation=f"The procedure-to-code match confidence is {candidate.confidence:.0%}, which indicates documentation or matching ambiguity.",
                         recommendation="Validate operative details against payer guidance.",
                         suggested_action="Clarify the procedure documentation before final billing review.",
+                        documentation_improvement="Clarify the exact procedure performed and whether it was diagnostic or therapeutic.",
+                        why_it_matters="Clear procedure intent improves CPT selection, coding confidence, and reimbursement predictability.",
                         evidence_used=evidence_used,
                     )
                 )
@@ -72,6 +76,8 @@ class BillingAuditor:
                         explanation="The note does not clearly document left or right side, which may affect modifier selection.",
                         recommendation="Clarify laterality before final billing review.",
                         suggested_action="Clarify laterality before final billing review.",
+                        documentation_improvement="Document whether the procedure was performed on the left or right side.",
+                        why_it_matters="Billing teams need laterality to select LT or RT modifiers and avoid payer follow-up.",
                         evidence_used=evidence_used,
                     )
                 )
@@ -88,6 +94,8 @@ class BillingAuditor:
                         explanation="The note produced two cholecystectomy candidates that should not both be submitted for the same operative session.",
                         recommendation="Bill only the supported definitive code for the documented service.",
                         suggested_action="Resolve the code conflict before submission.",
+                        documentation_improvement="Review whether both procedures should be billed together or select the single supported definitive code.",
+                        why_it_matters="Bundled services may be denied or create billing compliance risk if both codes are submitted.",
                         evidence_used=[],
                     )
                 )
@@ -103,6 +111,8 @@ class BillingAuditor:
                     explanation="The local demo checks did not identify missing modifiers, unsupported codes, bundling conflicts, or low-confidence coding.",
                     recommendation="Proceed with human review for final billing validation.",
                     suggested_action="Proceed with standard billing review.",
+                    documentation_improvement="No documentation improvement required from the local demo checks.",
+                    why_it_matters="A clean review gives billing teams a clearer path to standard coding validation.",
                     evidence_used=[],
                 )
             )

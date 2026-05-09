@@ -30,5 +30,17 @@ Capture these after running the app locally or deploying it.
    - Submit at least three example notes.
    - Capture recent analysis titles, top CPT codes, reimbursement, and readiness statuses.
 
-8. JSON export section
+8. How to improve this note
+   - Run a missing-laterality or bundled-code example.
+   - Capture documentation improvement suggestions and why they matter.
+
+9. Revision impact card
+   - Run a missing-laterality example, edit the note to add left or right side, then reanalyze.
+   - Capture previous versus new status, score change, resolved issues, and confidence trend.
+
+10. Revision history panel
+   - Expand revision history after a reanalysis.
+   - Capture original note, revised note, and readiness score change.
+
+11. JSON export section
    - Capture the Final Report card with Copy JSON and Download JSON buttons.

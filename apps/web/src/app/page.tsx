@@ -37,6 +37,8 @@ type AuditFinding = {
   related_code?: string | null;
   recommendation: string;
   suggested_action?: string | null;
+  documentation_improvement?: string | null;
+  why_it_matters?: string | null;
   evidence_used: EvidenceSnippet[];
 };
 
@@ -100,6 +102,27 @@ type EvaluationSummary = {
   per_case_results: EvaluationCase[];
 };
 
+type RevisionImpact = {
+  previousClaimStatus?: string;
+  newClaimStatus?: string;
+  previousReadinessScore: number;
+  newReadinessScore: number;
+  readinessScoreDelta: number;
+  resolvedIssues: string[];
+  addedIssues: string[];
+  cptChanges: Array<{ from?: string | null; to?: string | null }>;
+  previousAverageConfidence: number;
+  newAverageConfidence: number;
+};
+
+type RevisionHistoryItem = {
+  id: string;
+  createdAt: string;
+  originalNote: string;
+  revisedNote: string;
+  impact: RevisionImpact;
+};
+
 const examples = [
   {
     id: "av-fistula",
@@ -161,6 +184,42 @@ Procedure: Lower extremity angiogram.
 
 Operative note: Percutaneous access was obtained and a catheter was advanced for lower extremity angiogram. Images were obtained, but the dictated note does not clearly document left or right laterality, selected vascular territory, or whether additional interventions were performed.`,
   },
+  {
+    id: "improved-laterality",
+    label: "Improved Example: Laterality Clarified",
+    title: "Left open inguinal hernia repair",
+    note: `Title: Left open inguinal hernia repair
+
+Indication: Synthetic patient with symptomatic left inguinal hernia.
+
+Procedure: Left open inguinal hernia repair with mesh.
+
+Operative note: A left groin incision was made and carried down to the external oblique fascia. The indirect hernia sac was dissected from the cord structures and reduced. Mesh was placed and secured to the inguinal ligament and conjoint tendon on the left side. Hemostasis was achieved and the incision was closed.`,
+  },
+  {
+    id: "improved-angiogram",
+    label: "Improved Example: Documentation Complete",
+    title: "Left lower extremity diagnostic angiogram",
+    note: `Title: Left lower extremity diagnostic angiogram
+
+Indication: Synthetic patient with left leg claudication.
+
+Procedure: Left lower extremity diagnostic angiogram.
+
+Operative note: Percutaneous access was obtained and a catheter was positioned for imaging of the left lower extremity arterial system. Diagnostic angiographic images were obtained and interpreted for the left leg. No angioplasty, stent placement, or atherectomy was performed.`,
+  },
+  {
+    id: "corrected-chole",
+    label: "Corrected Example: Single Chole Code",
+    title: "Laparoscopic cholecystectomy without cholangiogram",
+    note: `Title: Laparoscopic cholecystectomy without cholangiogram
+
+Indication: Synthetic patient with symptomatic cholelithiasis.
+
+Procedure: Laparoscopic cholecystectomy.
+
+Operative note: Four ports were placed and the gallbladder was dissected from the liver bed. The cystic duct and artery were clipped and divided. The gallbladder was removed in an endoscopic bag. No cholangiogram was performed and no separate duct imaging was obtained.`,
+  },
 ];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -182,6 +241,10 @@ export default function Home() {
   const [showJson, setShowJson] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showEvaluation, setShowEvaluation] = useState(false);
+  const [showRevisionHistory, setShowRevisionHistory] = useState(false);
+  const [revisionImpact, setRevisionImpact] = useState<RevisionImpact | null>(null);
+  const [revisionHistory, setRevisionHistory] = useState<RevisionHistoryItem[]>([]);
+  const [lastAnalyzedNote, setLastAnalyzedNote] = useState<string | null>(null);
 
   useEffect(() => {
     void loadHistory();
@@ -198,6 +261,7 @@ export default function Home() {
     setCopyState("Copy JSON");
     setShowEvidence(false);
     setShowJson(false);
+    setRevisionImpact(null);
   }
 
   async function loadHistory() {
@@ -229,6 +293,8 @@ export default function Home() {
       return;
     }
     setReport(payload);
+    setRevisionImpact(null);
+    setLastAnalyzedNote(null);
     setAnalysisStarted(true);
     setCopyState("Copy JSON");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -241,6 +307,9 @@ export default function Home() {
     setCopyState("Copy JSON");
     setShowEvidence(false);
     setShowJson(false);
+    setRevisionImpact(null);
+    setRevisionHistory([]);
+    setLastAnalyzedNote(null);
   }
 
   async function submitNote() {
@@ -253,6 +322,8 @@ export default function Home() {
     setAnalysisStarted(true);
     setError(null);
     setCopyState("Copy JSON");
+    const previousReport = report;
+    const previousNote = lastAnalyzedNote ?? noteText;
     try {
       const [response] = await Promise.all([
         fetch(`${apiBaseUrl}/api/notes`, {
@@ -265,6 +336,23 @@ export default function Home() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error?.message ?? "API request failed.");
       setReport(payload);
+      setLastAnalyzedNote(noteText);
+      if (previousReport) {
+        const impact = compareReports(previousReport, payload);
+        setRevisionImpact(impact);
+        setRevisionHistory((items) => [
+          {
+            id: payload.id,
+            createdAt: new Date().toISOString(),
+            originalNote: previousNote,
+            revisedNote: noteText,
+            impact,
+          },
+          ...items,
+        ]);
+      } else {
+        setRevisionImpact(null);
+      }
       await loadHistory();
     } catch {
       setError("Could not generate report. Check that the backend API is running and try again.");
@@ -317,10 +405,12 @@ export default function Home() {
             onSubmit={submitNote}
             onClear={clearReport}
             hasReport={Boolean(report) || analysisStarted}
+            submitLabel={report ? "Reanalyze Updated Note" : "Analyze Note for Billing"}
           />
 
           <div className="space-y-5">
             <AnalysisStagePanel visible={analysisStarted || Boolean(report)} loading={loading} complete={Boolean(report)} />
+            <RevisionImpactCard impact={revisionImpact} />
             <ResultSummary report={report} loading={loading} />
             <KeyFindings report={report} />
           </div>
@@ -333,6 +423,7 @@ export default function Home() {
 
           <CptCandidates report={report} />
           <AuditFindings report={report} />
+          <ImprovementSuggestions report={report} />
 
           <Disclosure title="Show why this result?" open={showEvidence} onToggle={() => setShowEvidence((value) => !value)}>
             <EvidenceUsed report={report} />
@@ -344,6 +435,10 @@ export default function Home() {
 
           <Disclosure title="Show recent analyses" open={showHistory} onToggle={() => setShowHistory((value) => !value)}>
             <RecentAnalyses history={history} loading={historyLoading} onLoad={loadAnalysis} />
+          </Disclosure>
+
+          <Disclosure title="Show revision history" open={showRevisionHistory} onToggle={() => setShowRevisionHistory((value) => !value)}>
+            <RevisionHistoryPanel items={revisionHistory} />
           </Disclosure>
         </div>
       </section>
@@ -430,6 +525,7 @@ function InputPanel({
   onSubmit,
   onClear,
   hasReport,
+  submitLabel,
 }: {
   selectedExample: string;
   noteText: string;
@@ -440,6 +536,7 @@ function InputPanel({
   onSubmit: () => void;
   onClear: () => void;
   hasReport: boolean;
+  submitLabel: string;
 }) {
   return (
     <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
@@ -481,7 +578,7 @@ function InputPanel({
         disabled={loading}
         className="mt-6 w-full rounded-xl bg-[#245c52] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(36,92,82,0.18)] hover:bg-[#1e4f47] disabled:cursor-not-allowed disabled:bg-[#9bb5ad]"
       >
-        {loading ? "Analyzing note..." : "Analyze Note for Billing"}
+        {loading ? "Analyzing note..." : submitLabel}
       </button>
       {hasReport ? (
         <button
@@ -535,13 +632,97 @@ function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; 
                 loading && index > 1 ? "bg-[#edf0ec] text-[#84908c]" : "bg-[#dcebe5] text-[#245c52]"
               }`}
             >
-              {loading && index > 1 ? "…" : "✓"}
+              {loading && index > 1 ? "..." : "OK"}
             </span>
             {item}
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+function RevisionImpactCard({ impact }: { impact: RevisionImpact | null }) {
+  if (!impact) return null;
+  return (
+    <section className="rounded-2xl border border-[#cfe0d8] bg-[#fbfdfb] p-6 shadow-[0_14px_36px_rgba(39,78,70,0.08)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#607a73]">Revision Impact</p>
+          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Updated note comparison</h2>
+          <p className="mt-2 text-sm leading-6 text-[#667774]">Shows how the revised documentation changed billing readiness and audit risk.</p>
+        </div>
+        <StatusBadge status={impact.newClaimStatus ?? "Updated"} />
+      </div>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <ImpactMetric label="Previous status" value={impact.previousClaimStatus ?? "Not available"} />
+        <ImpactMetric label="New status" value={impact.newClaimStatus ?? "Not available"} />
+        <ImpactMetric label="Previous score" value={`${impact.previousReadinessScore}/100`} />
+        <ImpactMetric label="New score" value={`${impact.newReadinessScore}/100`} detail={formatDelta(impact.readinessScoreDelta)} />
+      </div>
+
+      <div className="mt-5 rounded-xl bg-[#f7fbf8] p-4">
+        <p className="text-sm font-semibold text-[#34464a]">Confidence trend</p>
+        <div className="mt-4 space-y-3">
+          <ConfidenceBar label="Initial confidence" value={impact.previousAverageConfidence} />
+          <ConfidenceBar label="Updated confidence" value={impact.newAverageConfidence} />
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <ImpactList title="Resolved issues" items={impact.resolvedIssues.map((item) => `Resolved: ${item}`)} empty="No prior issues were resolved." success />
+        <ImpactList title="New issues" items={impact.addedIssues} empty="No new issues added." />
+        <ImpactList
+          title="CPT changes"
+          items={impact.cptChanges.map((change) => `${change.from ?? "None"} -> ${change.to ?? "None"}`)}
+          empty="Primary CPT did not change."
+        />
+      </div>
+    </section>
+  );
+}
+
+function ImpactMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="rounded-xl border border-[#d8e2dc] bg-white/80 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-[#1f2d33]">{value}</p>
+      {detail ? <p className="mt-1 text-sm font-semibold text-[#245c52]">{detail}</p> : null}
+    </div>
+  );
+}
+
+function ConfidenceBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium text-[#34464a]">{label}</span>
+        <span className="font-semibold text-[#245c52]">{Math.round(value * 100)}%</span>
+      </div>
+      <div className="mt-2 h-2 rounded-full bg-[#e7eee9]">
+        <div className="h-2 rounded-full bg-[#245c52]" style={{ width: `${Math.max(4, Math.round(value * 100))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ImpactList({ title, items, empty, success = false }: { title: string; items: string[]; empty: string; success?: boolean }) {
+  return (
+    <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+      <p className="text-sm font-semibold text-[#34464a]">{title}</p>
+      {items.length ? (
+        <ul className="mt-3 space-y-2 text-sm">
+          {items.map((item) => (
+            <li key={item} className={`rounded-lg px-3 py-2 ${success ? "bg-[#edf6f2] text-[#245c52]" : "bg-[#fffdfa] text-[#586b69]"}`}>
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 rounded-lg bg-[#fffdfa] px-3 py-2 text-sm text-[#71817d]">{empty}</p>
+      )}
+    </div>
   );
 }
 
@@ -574,6 +755,8 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
             <p className="mt-2 text-base font-semibold text-[#1f2d33]">{report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status)}</p>
           </div>
           <div className="mt-4 rounded-xl bg-[#f7f4ef] p-4">
+            <p className="mb-3 text-sm font-semibold text-[#34464a]">Report narrative</p>
+            <p className="mb-3 text-sm leading-6 text-[#586b69]">{reportNarrative(report)}</p>
             <p className="text-sm leading-6 text-[#586b69]">{report.report.claim_readiness_explanation}</p>
             <ul className="mt-3 grid gap-2 text-sm text-[#34464a] sm:grid-cols-2">
               {(report.report.claim_readiness_reasons ?? fallbackReasons(report)).map((reason) => (
@@ -745,6 +928,47 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
   );
 }
 
+function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
+  const findings = (report?.audit_findings ?? []).filter((finding) => finding.category !== "clean_claim");
+  return (
+    <SectionCard
+      title="How to improve this note"
+      explainer="Practical documentation changes that would help a billing team review the note more confidently."
+    >
+      {report ? (
+        findings.length ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {findings.map((finding, index) => (
+              <div key={`${finding.category}-suggestion-${index}`} className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#34464a]">{finding.title ?? findingTitle(finding.category)}</p>
+                    <p className="mt-2 text-sm leading-6 text-[#586b69]">
+                      {finding.documentation_improvement ?? improvementForFinding(finding)}
+                    </p>
+                  </div>
+                  <StatusBadge status={finding.severity === "high" ? "High Risk" : "Needs Review"} />
+                </div>
+                <div className="mt-4 rounded-lg bg-[#fffdfa] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">Why this matters</p>
+                  <p className="mt-2 text-sm leading-6 text-[#667774]">{finding.why_it_matters ?? whyImprovementMatters(finding)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-[#c4dad2] bg-[#edf6f2] p-4">
+            <p className="font-semibold text-[#245c52]">No documentation gaps were flagged by the local demo checks.</p>
+            <p className="mt-2 text-sm leading-6 text-[#586b69]">A billing team would still perform standard human validation before submission.</p>
+          </div>
+        )
+      ) : (
+        <FriendlyEmpty title="Improvement suggestions will appear after analysis." text="If the note has missing details or risk flags, this section will explain how to revise it and why it matters." />
+      )}
+    </SectionCard>
+  );
+}
+
 function EvidenceUsed({ report }: { report: AnalysisReport | null }) {
   return (
     <SectionCard title="Why this result?" explainer="Shows the procedure match, risks checked, and references that supported the billing review.">
@@ -864,6 +1088,48 @@ function RecentAnalyses({
         <FriendlyEmpty title={loading ? "Loading recent analyses..." : "No recent analyses yet."} text="Generated reports will appear here after you run examples." />
       )}
     </SectionCard>
+  );
+}
+
+function RevisionHistoryPanel({ items }: { items: RevisionHistoryItem[] }) {
+  return (
+    <SectionCard title="Revision History" explainer="Tracks note edits made during this browser session and how each revision changed claim readiness.">
+      {items.length ? (
+        <div className="space-y-4">
+          {items.map((item, index) => (
+            <div key={`${item.id}-${item.createdAt}`} className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#34464a]">Revision {items.length - index}</p>
+                  <p className="mt-1 text-xs text-[#71817d]">{new Date(item.createdAt).toLocaleString()}</p>
+                </div>
+                <StatusBadge status={item.impact.newClaimStatus ?? "Updated"} />
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <SummaryMetric label="Previous score" value={`${item.impact.previousReadinessScore}/100`} />
+                <SummaryMetric label="Updated score" value={`${item.impact.newReadinessScore}/100`} />
+                <SummaryMetric label="Score change" value={formatDelta(item.impact.readinessScoreDelta)} />
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <NotePreview title="Original note" text={item.originalNote} />
+                <NotePreview title="Revised note" text={item.revisedNote} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <FriendlyEmpty title="No revisions yet." text="After a report is generated, edit the note and choose Reanalyze Updated Note to create a revision history entry." />
+      )}
+    </SectionCard>
+  );
+}
+
+function NotePreview({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-xl bg-[#fffdfa] p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{title}</p>
+      <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-xs leading-5 text-[#667774]">{text}</p>
+    </div>
   );
 }
 
@@ -991,6 +1257,21 @@ function fallbackReasons(report: AnalysisReport) {
   ];
 }
 
+function reportNarrative(report: AnalysisReport) {
+  const issue = report.report.main_issue ?? mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info"));
+  const action = report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status);
+  if (report.report.claim_readiness_status === "Ready") {
+    return `The note is currently marked as Ready because the primary procedure is documented clearly and the local demo audit checks did not find major billing risks. Recommended next step: ${action}`;
+  }
+  if (issue === "Missing laterality") {
+    return `The note is currently marked as ${report.report.claim_readiness_status} because laterality was not clearly documented. Clarifying whether the procedure was performed on the left or right side would likely improve coding confidence and reduce modifier ambiguity.`;
+  }
+  if (issue === "Bundling conflict") {
+    return `The note is currently marked as High Risk because the documentation produced a possible bundled-code conflict. Resolving which service should be billed would reduce denial and compliance risk.`;
+  }
+  return `The note is currently marked as ${report.report.claim_readiness_status} because the billing review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
+}
+
 function findingTitle(category: string) {
   if (category === "bundling_conflict") return "Bundling conflict detected";
   if (category === "low_confidence") return "Low confidence coding";
@@ -998,4 +1279,63 @@ function findingTitle(category: string) {
   if (category === "unsupported_code") return "Unsupported procedure";
   if (category === "clean_claim") return "No major billing risks found";
   return readableCategory(category);
+}
+
+function improvementForFinding(finding: AuditFinding) {
+  if (finding.category === "missing_laterality") return "Document whether the procedure was performed on the left or right side.";
+  if (finding.category === "low_confidence") return "Clarify the exact procedure performed and whether it was diagnostic or therapeutic.";
+  if (finding.category === "bundling_conflict") return "Review whether both procedures should be billed together or select the single supported definitive code.";
+  if (finding.category === "unsupported_code") return "Confirm the correct billable procedure and supporting reference before coding.";
+  return finding.suggested_action ?? finding.recommendation;
+}
+
+function whyImprovementMatters(finding: AuditFinding) {
+  if (finding.category === "missing_laterality") return "Billing teams need laterality to select LT or RT modifiers and avoid payer follow-up.";
+  if (finding.category === "low_confidence") return "Clear procedure intent improves CPT selection, coding confidence, and reimbursement predictability.";
+  if (finding.category === "bundling_conflict") return "Bundled services may be denied or create billing compliance risk if both codes are submitted.";
+  if (finding.category === "unsupported_code") return "Unsupported codes create denial and compliance risk during billing review.";
+  return "Cleaner documentation helps billing reviewers make a more confident coding decision.";
+}
+
+function compareReports(previous: AnalysisReport, current: AnalysisReport): RevisionImpact {
+  const previousFindings = issueMap(previous);
+  const currentFindings = issueMap(current);
+  const previousCpt = primaryCpt(previous);
+  const currentCpt = primaryCpt(current);
+  const cptChanges = previousCpt === currentCpt ? [] : [{ from: previousCpt, to: currentCpt }];
+
+  return {
+    previousClaimStatus: previous.report.claim_readiness_status,
+    newClaimStatus: current.report.claim_readiness_status,
+    previousReadinessScore: previous.report.claim_readiness_score,
+    newReadinessScore: current.report.claim_readiness_score,
+    readinessScoreDelta: current.report.claim_readiness_score - previous.report.claim_readiness_score,
+    resolvedIssues: [...previousFindings.keys()].filter((key) => !currentFindings.has(key)).map((key) => previousFindings.get(key) ?? key),
+    addedIssues: [...currentFindings.keys()].filter((key) => !previousFindings.has(key)).map((key) => currentFindings.get(key) ?? key),
+    cptChanges,
+    previousAverageConfidence: averageConfidence(previous),
+    newAverageConfidence: averageConfidence(current),
+  };
+}
+
+function issueMap(report: AnalysisReport) {
+  const entries = report.audit_findings
+    .filter((finding) => finding.category !== "clean_claim")
+    .map((finding) => [finding.category || finding.title || finding.message, finding.title ?? findingTitle(finding.category)] as const);
+  return new Map(entries);
+}
+
+function primaryCpt(report: AnalysisReport) {
+  if (!report.cpt_candidates.length) return null;
+  return [...report.cpt_candidates].sort((left, right) => right.confidence - left.confidence)[0].code;
+}
+
+function averageConfidence(report: AnalysisReport) {
+  if (!report.cpt_candidates.length) return 0;
+  const total = report.cpt_candidates.reduce((sum, candidate) => sum + candidate.confidence, 0);
+  return total / report.cpt_candidates.length;
+}
+
+function formatDelta(value: number) {
+  return `${value >= 0 ? "+" : ""}${value}`;
 }

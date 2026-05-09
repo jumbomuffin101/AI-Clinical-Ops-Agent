@@ -1,6 +1,6 @@
 # AI Clinical Ops Agent
 
-AI Clinical Ops Agent is a synthetic-demo healthcare revenue cycle tool that turns a surgical operative note into likely CPT billing-code candidates, documentation and billing risk flags, reimbursement estimates, and a plain-English claim readiness report. It is built to feel like a real healthcare operations dashboard rather than a chatbot: users choose or paste a synthetic note, run billing analysis, review what needs attention, and export a structured report for operational review.
+AI Clinical Ops Agent is a synthetic-demo healthcare revenue cycle tool that turns a surgical operative note into likely CPT billing-code candidates, documentation and billing risk flags, reimbursement estimates, and a plain-English claim readiness report. It is built to feel like a real healthcare operations workflow rather than a one-shot chatbot: users choose or paste a synthetic note, run billing analysis, review what needs attention, revise the documentation, reanalyze the updated note, and export a structured report for operational review.
 
 ## Why It Matters
 
@@ -20,6 +20,7 @@ The app proves that a multi-agent system can process a note end to end without r
 - Multi-agent backend pipeline for procedure extraction, CPT candidate generation, billing audit, reimbursement estimation, and report generation.
 - Local keyword RAG over coding guideline snippets, with retrieved evidence shown in the dashboard.
 - Deterministic claim readiness score from `0-100` with `Ready`, `Needs Review`, and `High Risk` statuses.
+- Interactive revision workflow with suggested documentation improvements, before/after claim readiness comparison, resolved-issue tracking, and revision history.
 - Analysis history and structured JSON export endpoints.
 - Synthetic dataset evaluation with CPT match, audit finding, claim readiness, and confidence metrics.
 - Next.js dashboard with step-by-step guidance, plain-English claim summary, CPT table, audit table, expandable evidence, recent analyses, and export controls.
@@ -154,6 +155,21 @@ Metrics shown:
 
 This evaluation is intentionally limited. It measures consistency on known synthetic cases only; it does not prove clinical correctness, payer-specific compliance, or performance on real patient records.
 
+## Interactive Review Workflow
+
+The dashboard supports an iterative billing-review loop. If a note is missing laterality, has ambiguous procedure documentation, or triggers a bundled-code warning, the app explains how to improve the note and why the billing team would care. Users can edit the synthetic note in place, choose `Reanalyze Updated Note`, and compare the previous result against the updated result.
+
+Revision impact shows:
+
+- Previous versus updated claim status
+- Previous versus updated readiness score
+- Resolved audit issues, such as `Resolved: Missing laterality`
+- Newly introduced audit issues
+- Primary CPT changes
+- Initial versus updated confidence trend
+
+This makes the demo closer to a practical billing review assistant: the system does not only flag problems, it guides the user toward clearer documentation and shows whether the revision improved claim readiness.
+
 ## Demo Screenshots
 
 Placeholder screenshots to capture after local run or deployment:
@@ -164,6 +180,9 @@ Placeholder screenshots to capture after local run or deployment:
 - High Risk claim result
 - CPT evidence table
 - Audit warning section
+- How to improve this note section
+- Revision impact before/after card
+- Revision history panel
 - Recent analyses panel
 - JSON export section
 - System evaluation dashboard

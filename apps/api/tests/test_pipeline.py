@@ -44,7 +44,9 @@ def test_missing_laterality_does_not_assign_modifier():
     findings = BillingAuditor(retriever).run(candidates)
     assert candidates[0].code == "49505"
     assert candidates[0].modifiers == []
-    assert any(finding.title == "Missing laterality" for finding in findings)
+    missing_laterality = next(finding for finding in findings if finding.title == "Missing laterality")
+    assert missing_laterality.documentation_improvement == "Document whether the procedure was performed on the left or right side."
+    assert "laterality" in (missing_laterality.why_it_matters or "")
 
 
 def test_retrieval_filters_irrelevant_evidence_by_family():
