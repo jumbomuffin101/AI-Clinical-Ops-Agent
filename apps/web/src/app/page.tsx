@@ -236,9 +236,7 @@ export default function Home() {
   const [evaluationLoading, setEvaluationLoading] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copyState, setCopyState] = useState("Copy JSON");
   const [showEvidence, setShowEvidence] = useState(false);
-  const [showJson, setShowJson] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [showRevisionHistory, setShowRevisionHistory] = useState(false);
@@ -258,9 +256,7 @@ export default function Home() {
     setReport(null);
     setError(null);
     setAnalysisStarted(false);
-    setCopyState("Copy JSON");
     setShowEvidence(false);
-    setShowJson(false);
     setRevisionImpact(null);
   }
 
@@ -296,7 +292,6 @@ export default function Home() {
     setRevisionImpact(null);
     setLastAnalyzedNote(null);
     setAnalysisStarted(true);
-    setCopyState("Copy JSON");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -304,9 +299,7 @@ export default function Home() {
     setReport(null);
     setAnalysisStarted(false);
     setError(null);
-    setCopyState("Copy JSON");
     setShowEvidence(false);
-    setShowJson(false);
     setRevisionImpact(null);
     setRevisionHistory([]);
     setLastAnalyzedNote(null);
@@ -321,7 +314,6 @@ export default function Home() {
     setLoading(true);
     setAnalysisStarted(true);
     setError(null);
-    setCopyState("Copy JSON");
     const previousReport = report;
     const previousNote = lastAnalyzedNote ?? noteText;
     try {
@@ -359,32 +351,6 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function fetchExport(id: string) {
-    const response = await fetch(`${apiBaseUrl}/api/analyses/${id}/export`);
-    if (!response.ok) return report;
-    return response.json();
-  }
-
-  async function copyJson() {
-    if (!report) return;
-    const exportPayload = await fetchExport(report.id);
-    await navigator.clipboard.writeText(JSON.stringify(exportPayload, null, 2));
-    setCopyState("Copied");
-    window.setTimeout(() => setCopyState("Copy JSON"), 1600);
-  }
-
-  async function downloadJson() {
-    if (!report) return;
-    const exportPayload = await fetchExport(report.id);
-    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `claim-readiness-report-${report.id}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   return (
@@ -425,19 +391,15 @@ export default function Home() {
           <AuditFindings report={report} />
           <ImprovementSuggestions report={report} />
 
-          <Disclosure title="Show why this result?" open={showEvidence} onToggle={() => setShowEvidence((value) => !value)}>
+          <Disclosure title="Why this result?" open={showEvidence} onToggle={() => setShowEvidence((value) => !value)}>
             <EvidenceUsed report={report} />
           </Disclosure>
 
-          <Disclosure title="Show technical JSON" open={showJson} onToggle={() => setShowJson((value) => !value)}>
-            <FinalReport report={report} copyState={copyState} onCopy={copyJson} onDownload={downloadJson} />
-          </Disclosure>
-
-          <Disclosure title="Show recent analyses" open={showHistory} onToggle={() => setShowHistory((value) => !value)}>
+          <Disclosure title="Recent analyses" open={showHistory} onToggle={() => setShowHistory((value) => !value)}>
             <RecentAnalyses history={history} loading={historyLoading} onLoad={loadAnalysis} />
           </Disclosure>
 
-          <Disclosure title="Show revision history" open={showRevisionHistory} onToggle={() => setShowRevisionHistory((value) => !value)}>
+          <Disclosure title="Revision history" open={showRevisionHistory} onToggle={() => setShowRevisionHistory((value) => !value)}>
             <RevisionHistoryPanel items={revisionHistory} />
           </Disclosure>
         </div>
@@ -1016,38 +978,6 @@ function EvidenceUsed({ report }: { report: AnalysisReport | null }) {
   );
 }
 
-function FinalReport({
-  report,
-  copyState,
-  onCopy,
-  onDownload,
-}: {
-  report: AnalysisReport | null;
-  copyState: string;
-  onCopy: () => void;
-  onDownload: () => void;
-}) {
-  return (
-    <SectionCard title="Final Report" explainer="A structured summary that could be reviewed by an operations or billing team.">
-      {report ? (
-        <>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <button type="button" onClick={onCopy} className="rounded-xl border border-[#d8d0c4] px-3 py-2 text-sm font-semibold text-[#34464a] hover:bg-[#f7f4ef]">
-              {copyState}
-            </button>
-            <button type="button" onClick={onDownload} className="rounded-xl bg-[#1f2d33] px-3 py-2 text-sm font-semibold text-white hover:bg-[#34464a]">
-              Download JSON
-            </button>
-          </div>
-          <pre className="max-h-[360px] overflow-auto rounded-lg bg-[#101820] p-4 text-xs leading-5 text-[#e6edf3]">{JSON.stringify(report.report, null, 2)}</pre>
-        </>
-      ) : (
-        <FriendlyEmpty title="Technical report not generated yet." text="Run an analysis first, then expand this section to copy or download the JSON output." />
-      )}
-    </SectionCard>
-  );
-}
-
 function RecentAnalyses({
   history,
   loading,
@@ -1135,12 +1065,22 @@ function NotePreview({ title, text }: { title: string; text: string }) {
 
 function Disclosure({ title, open, onToggle, children }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] shadow-[0_12px_32px_rgba(54,42,31,0.05)]">
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-5 py-4 text-left">
-        <span className="text-base font-semibold text-[#1f2d33]">{title}</span>
-        <span className="text-sm font-semibold text-[#245c52]">{open ? "Hide" : "Show"}</span>
+    <section className="overflow-hidden rounded-2xl border border-[#e5ded5] bg-[#fffdfa] shadow-[0_12px_30px_rgba(54,42,31,0.045)]">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-5 px-6 py-5 text-left transition hover:bg-[#fbf7f1]">
+        <span>
+          <span className="block text-base font-semibold text-[#1f2d33]">{title}</span>
+          <span className="mt-1 block text-xs font-medium uppercase tracking-[0.08em] text-[#7a8a88]">{open ? "Expanded" : "Collapsed"}</span>
+        </span>
+        <span
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#d8d0c4] bg-[#fffaf4] text-lg font-semibold text-[#245c52] transition-transform ${
+            open ? "rotate-45" : ""
+          }`}
+          aria-hidden="true"
+        >
+          +
+        </span>
       </button>
-      {open ? <div className="border-t border-[#eee7dd] p-5">{children}</div> : null}
+      {open ? <div className="border-t border-[#efe8df] bg-[#fffdfa] p-6">{children}</div> : null}
     </section>
   );
 }

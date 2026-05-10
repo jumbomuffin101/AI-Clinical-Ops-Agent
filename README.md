@@ -1,77 +1,198 @@
 # AI Clinical Ops Agent
 
-AI Clinical Ops Agent is a synthetic-demo healthcare revenue cycle tool that turns a surgical operative note into likely CPT billing-code candidates, documentation and billing risk flags, reimbursement estimates, and a plain-English claim readiness report. It is built to feel like a real healthcare operations workflow rather than a one-shot chatbot: users choose or paste a synthetic note, run billing analysis, review what needs attention, revise the documentation, reanalyze the updated note, and export a structured report for operational review.
+AI Clinical Ops Agent is a full-stack healthcare revenue cycle demo that analyzes synthetic operative notes, suggests CPT-style billing codes, flags documentation risks, and generates claim readiness reports.
 
-## Why It Matters
+This is not a chatbot wrapper. The goal was to build a small but realistic workflow tool with a frontend, backend, database, migrations, tests, synthetic data, and deployment path.
 
-Surgical coding and revenue-cycle workflows depend on precise operative-note interpretation, modifier validation, payer-style audit checks, and reimbursement estimation. Missing laterality, unsupported codes, low-confidence documentation, or bundled-code conflicts can delay claims or create compliance risk. This project demonstrates how an AI-assisted workflow can support billing and operations teams while keeping outputs structured, auditable, and testable.
+## Why I Built This
 
-## Who It Is For
+I built this project because I am interested in the intersection of healthcare operations and backend systems. A lot of healthcare software is not just about showing information; it is about helping people make operational decisions from messy documentation.
 
-This demo is intended for healthcare operations, revenue cycle, billing, and product/engineering audiences evaluating how AI agents can assist with clinical documentation review. It uses only synthetic notes so the workflow can be shown publicly without exposing protected health information.
+Operative notes are a good example. If a note does not clearly document something like laterality, procedure intent, or whether two services should be billed together, that can affect coding, reimbursement, and claim review. I wanted to model that kind of workflow in a project that was more structured than a generic AI chat demo.
 
-## What The Demo Proves
+The project uses synthetic notes only. There is no patient data in this repository, and the app is not intended to be medical or billing advice. The point is to demonstrate how an AI-assisted operations system could be designed with deterministic outputs, audit checks, evidence snippets, revision tracking, and evaluation metrics.
 
-The app proves that a multi-agent system can process a note end to end without relying on a generic chat interface: procedure extraction, CPT candidate generation, RAG-backed evidence retrieval, billing audit checks, reimbursement estimation, claim readiness scoring, analysis history, and JSON export all work locally with deterministic mock logic before real LLM APIs are added.
+## What The App Does
 
-## Key Features
+The app lets a user:
 
-- Guided synthetic operative-note workflow with a persistent no-PHI warning.
-- Multi-agent backend pipeline for procedure extraction, CPT candidate generation, billing audit, reimbursement estimation, and report generation.
-- Local keyword RAG over coding guideline snippets, with retrieved evidence shown in the dashboard.
-- Deterministic claim readiness score from `0-100` with `Ready`, `Needs Review`, and `High Risk` statuses.
-- Interactive revision workflow with suggested documentation improvements, before/after claim readiness comparison, resolved-issue tracking, and revision history.
-- Analysis history and structured JSON export endpoints.
-- Synthetic dataset evaluation with CPT match, audit finding, claim readiness, and confidence metrics.
-- Next.js dashboard with step-by-step guidance, plain-English claim summary, CPT table, audit table, expandable evidence, recent analyses, and export controls.
-- Production-ready backend foundations: Alembic migrations, health checks, integration tests, Docker deployment, and provider abstraction.
+- choose or paste a synthetic operative note
+- run a billing analysis
+- identify likely CPT-style code candidates
+- detect documentation or billing risks
+- estimate reimbursement from a local fake fee schedule
+- generate a claim readiness status
+- see suggested documentation improvements
+- revise the note and re-run the analysis
+- compare the original and revised results
+- review synthetic evaluation metrics across the demo dataset
 
-## Architecture
+The revision workflow is an important part of the project. If the system flags missing laterality or ambiguous documentation, the user can edit the note, reanalyze it, and see whether the claim readiness score improved.
 
-```mermaid
-flowchart LR
-    A["Frontend Dashboard<br/>Next.js"] --> B["FastAPI API"]
-    B --> C["Multi-Agent Pipeline"]
-    C --> D["Procedure Extractor"]
-    C --> E["CPT Coder"]
-    C --> F["Billing Auditor"]
-    C --> G["Reimbursement Estimator"]
-    C --> H["Report Generator"]
-    E --> I["RAG Retriever<br/>Reference Docs"]
-    F --> I
-    B --> J["PostgreSQL<br/>SQLAlchemy + Alembic"]
-    H --> K["JSON Report / Export"]
+## Example Workflow
+
+A user selects a synthetic open inguinal hernia repair note where the note does not say whether the repair was on the left or right side.
+
+The app flags:
+
+- `Missing laterality`
+- claim status: `Needs Review`
+- suggested improvement: document whether the procedure was performed on the left or right side
+
+The user updates the note to specify `left open inguinal hernia repair`, then reanalyzes it.
+
+The app shows:
+
+- the missing laterality issue was resolved
+- the claim readiness score improved
+- the CPT modifier is no longer ambiguous
+- the revision history records the before/after result
+
+## System Architecture
+
+The project is organized as a monorepo:
+
+```text
+apps/
+  api/    FastAPI backend
+  web/    Next.js frontend
+
+data/
+  synthetic_notes/
+  reference_docs/
+  fee_schedule/
+  evaluation/
+
+docs/
 ```
 
-Plain text architecture is also available in [docs/architecture.md](docs/architecture.md).
+### Frontend
 
-## Tech Stack
+The frontend is a Next.js app using TypeScript, React, the App Router, and Tailwind CSS. It is built as a workflow UI instead of a chat interface. The main dashboard includes:
 
-- **Frontend:** Next.js, TypeScript, App Router, Tailwind CSS
-- **Backend:** FastAPI, Python, Pydantic
-- **Database:** PostgreSQL, SQLAlchemy, Alembic
-- **AI Layer:** Mock provider by default, OpenAI provider stub for future integration
-- **RAG:** Local keyword retrieval over Markdown reference docs
-- **Infra:** Docker Compose, Dockerfile deployment path for Render
-- **Testing:** Pytest, FastAPI TestClient
+- synthetic note input
+- example note selector
+- billing analysis stage
+- claim readiness summary
+- CPT candidates
+- audit findings
+- documentation improvement suggestions
+- before/after revision impact
+- recent analyses
+- evaluation dashboard
+
+### Backend
+
+The backend is a FastAPI app with a modular analysis pipeline:
+
+```text
+Operative note
+  -> procedure extractor
+  -> CPT coder
+  -> billing auditor
+  -> reimbursement estimator
+  -> report generator
+```
+
+Each step passes structured Pydantic models to the next step. The logic is intentionally deterministic where possible so it can be tested. The system uses lightweight keyword retrieval over local reference docs instead of pretending to be a fully autonomous medical AI system.
+
+### Database
+
+PostgreSQL is used for deployed environments, with SQLAlchemy models and Alembic migrations. Local development can also run against SQLite for quick testing.
+
+Stored entities include:
+
+- notes
+- analyses
+- extracted procedures
+- CPT candidates
+- audit findings
+- reimbursement estimates
+
+### Infrastructure
+
+The backend is Dockerized and can run locally with Docker Compose or deploy to Render. The frontend is deployed separately on Vercel. Database migrations are handled with Alembic.
+
+## Features
+
+- CPT-style candidate generation from synthetic operative notes
+- billing and documentation risk detection
+- missing modifier and missing laterality checks
+- bundled-code conflict detection
+- claim readiness scoring
+- recommended next action for each result
+- evidence snippets from local reference docs
+- documentation improvement suggestions
+- note revision and reanalysis workflow
+- before/after comparison for revised notes
+- resolved issue tracking
+- revision history in the UI
+- recent analysis history
+- JSON export support in the backend
+- synthetic dataset evaluation dashboard
+- Dockerized backend
+- Alembic migrations
+- Pytest coverage for pipeline, API, evaluation, and revision logic
+
+## Evaluation
+
+The app includes a small synthetic benchmark under `data/evaluation/gold_standard.json`.
+
+Current evaluation results:
+
+- 9 synthetic cases evaluated
+- 100% CPT match accuracy
+- 100% audit finding accuracy
+- 100% claim readiness accuracy
+- 90.6% average confidence
+
+These numbers are only for the synthetic benchmark cases included in the repo. They should not be interpreted as real-world billing accuracy. The evaluation is useful because it checks that the deterministic pipeline produces the expected outputs for known demo cases and catches regressions when the rules change.
+
+## Deployment
+
+The deployed version uses:
+
+- Vercel for the Next.js frontend
+- Render for the FastAPI backend
+- Render PostgreSQL for the database
+- Docker for the backend service
+
+Important environment variables:
+
+```env
+DATABASE_URL=postgresql+psycopg://...
+LLM_PROVIDER=mock
+ENVIRONMENT=production
+CORS_ORIGINS=https://your-vercel-app.vercel.app
+NEXT_PUBLIC_API_BASE_URL=https://your-render-api.onrender.com
+```
+
+The backend should run in production mode, not with Uvicorn reload enabled.
+
+More deployment notes are in:
+
+- `docs/deployment.md`
+- `docs/deployment_checklist.md`
 
 ## Local Setup
 
-Backend:
+### Backend
 
 ```powershell
 cd apps/api
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
 $env:DATABASE_URL="sqlite:///./clinical_ops.db"
 $env:ENVIRONMENT="local"
 $env:LLM_PROVIDER="mock"
+
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-Frontend:
+### Frontend
 
 ```powershell
 cd apps/web
@@ -82,127 +203,76 @@ npm run dev
 
 Open:
 
-- Dashboard: http://localhost:3000
-- API docs: http://localhost:8000/docs
-- Health: http://localhost:8000/health
-- DB health: http://localhost:8000/health/db
+- frontend: `http://localhost:3000`
+- API docs: `http://localhost:8000/docs`
+- health check: `http://localhost:8000/health`
 
-## Docker Setup
-
-```powershell
-Copy-Item .env.example .env
-docker compose up --build
-```
-
-The API container runs `alembic upgrade head` before starting Uvicorn.
-
-## Deployment Guide
-
-Recommended deployment:
-
-```text
-Vercel frontend
-    -> Render FastAPI Docker service
-        -> Render PostgreSQL
-```
-
-Required backend environment variables:
-
-```env
-DATABASE_URL=postgresql+psycopg://user:password@host:5432/dbname
-LLM_PROVIDER=mock
-ENVIRONMENT=production
-AUTO_CREATE_TABLES=false
-CORS_ORIGINS=https://your-vercel-app.vercel.app
-```
-
-Required frontend environment variable:
-
-```env
-NEXT_PUBLIC_API_BASE_URL=https://your-render-api.onrender.com
-```
-
-Detailed deployment steps are in [docs/deployment.md](docs/deployment.md) and [docs/deployment_checklist.md](docs/deployment_checklist.md).
-
-## Synthetic Data And No PHI
-
-This repository is for synthetic demo data only. Do not enter real patient information. The sample notes in `data/synthetic_notes` are fabricated for testing and portfolio demonstrations.
-
-## Example Output
-
-The API returns structured output with:
-
-- Note metadata
-- Extracted procedures
-- CPT candidates with modifiers, confidence, rationale, and evidence snippets
-- Audit findings with severity, category, recommendation, and evidence
-- Reimbursement estimates from a fake local fee schedule
-- Claim readiness score and explanation
-- Final report object for JSON export
-
-See [docs/sample_analysis_output.json](docs/sample_analysis_output.json).
-
-## System Evaluation
-
-The dashboard includes a collapsible `View system evaluation` section that runs the synthetic demo dataset against `data/evaluation/gold_standard.json`.
-
-Metrics shown:
-
-- **CPT match accuracy:** whether the primary generated CPT matches the expected demo CPT.
-- **Audit finding accuracy:** whether expected audit categories such as missing laterality or bundling conflict are detected.
-- **Claim readiness accuracy:** whether the system assigns the expected `Ready`, `Needs Review`, or `High Risk` status.
-- **Average confidence:** average confidence of the primary CPT candidate across synthetic notes.
-
-This evaluation is intentionally limited. It measures consistency on known synthetic cases only; it does not prove clinical correctness, payer-specific compliance, or performance on real patient records.
-
-## Interactive Review Workflow
-
-The dashboard supports an iterative billing-review loop. If a note is missing laterality, has ambiguous procedure documentation, or triggers a bundled-code warning, the app explains how to improve the note and why the billing team would care. Users can edit the synthetic note in place, choose `Reanalyze Updated Note`, and compare the previous result against the updated result.
-
-Revision impact shows:
-
-- Previous versus updated claim status
-- Previous versus updated readiness score
-- Resolved audit issues, such as `Resolved: Missing laterality`
-- Newly introduced audit issues
-- Primary CPT changes
-- Initial versus updated confidence trend
-
-This makes the demo closer to a practical billing review assistant: the system does not only flag problems, it guides the user toward clearer documentation and shows whether the revision improved claim readiness.
-
-## Demo Screenshots
-
-Placeholder screenshots to capture after local run or deployment:
-
-- Empty dashboard
-- Example note selected
-- Ready claim result
-- High Risk claim result
-- CPT evidence table
-- Audit warning section
-- How to improve this note section
-- Revision impact before/after card
-- Revision history panel
-- Recent analyses panel
-- JSON export section
-- System evaluation dashboard
-
-See [docs/screenshot_checklist.md](docs/screenshot_checklist.md).
-
-## Useful Commands
+### Tests
 
 ```powershell
-make test-backend
-make run-backend
-make run-frontend
-make build-frontend
-make migrate
+cd apps/api
+python -m pytest -q
 ```
 
-If `make` is unavailable on Windows, run the commands listed in the `Makefile` directly.
+```powershell
+cd apps/web
+npm run build
+```
+
+## Screenshots
+
+### Main Dashboard
+
+![Main dashboard screenshot placeholder](docs/screenshots/main-dashboard.png)
+
+### Needs Review Result
+
+![Needs Review screenshot placeholder](docs/screenshots/needs-review.png)
+
+### High Risk Result
+
+![High Risk screenshot placeholder](docs/screenshots/high-risk.png)
+
+### Revision Workflow
+
+![Revision workflow screenshot placeholder](docs/screenshots/revision-workflow.png)
+
+### Evaluation Dashboard
+
+![Evaluation dashboard screenshot placeholder](docs/screenshots/evaluation-dashboard.png)
+
+## Limitations
+
+This project has important limitations:
+
+- It uses synthetic operative notes only.
+- It is not production medical software.
+- It is not billing advice and should not be used for real claims.
+- CPT logic is simplified and only covers a small demo code set.
+- Many decisions are deterministic and rule-based by design.
+- The retrieval system is keyword-based, not embedding-based.
+- The fee schedule is fake and only exists for demo purposes.
+- The evaluation set is small and synthetic.
+- The OpenAI provider is only a placeholder; the mock provider is the default.
+
+I kept these limitations explicit because the goal is to show system design and workflow thinking, not to claim real clinical or billing correctness.
+
+## Future Improvements
+
+Some realistic next steps:
+
+- improve retrieval with embeddings and better document chunking
+- expand the synthetic gold-standard evaluation set
+- add note section parsing for indication, procedure, findings, and conclusion
+- support more CPT families and modifier rules
+- make reimbursement logic more realistic
+- add reviewer comments and manual override workflow
+- expand the provider abstraction beyond the mock provider
+- add frontend component tests for revision workflows
+- add role-based views for coder, auditor, and operations reviewer
 
 ## Resume Bullets
 
-- Built a full-stack AI clinical operations platform using FastAPI, Next.js, PostgreSQL, and Docker to process synthetic operative notes into structured CPT coding and reimbursement reports.
-- Designed a modular multi-agent pipeline for procedure extraction, CPT code generation, billing audit, RAG-backed evidence retrieval, and claim readiness scoring.
-- Implemented production-ready backend infrastructure with Alembic migrations, integration tests, health checks, Docker deployment, and mock/LLM provider abstraction.
+- Built a full-stack healthcare revenue cycle demo using FastAPI, Next.js, PostgreSQL, Docker, and Alembic to analyze synthetic operative notes and generate structured claim readiness reports.
+- Designed a modular analysis pipeline for procedure extraction, CPT candidate generation, billing audit checks, reimbursement estimation, evidence retrieval, and revision comparison.
+- Added evaluation tooling, integration tests, synthetic benchmark data, and deployment documentation to make the project runnable, testable, and presentable as a portfolio project.
