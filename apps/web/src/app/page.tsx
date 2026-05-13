@@ -1362,6 +1362,6 @@ function formatDelta(value: number) {
 }
 
 function analysisModeLabel(value?: string) {
-  if (value === "hybrid_ai") return "Hybrid AI mode";
+  if (value === "hybrid_ai" || value === "Hybrid AI mode") return "Hybrid AI mode";
   return "Rules mode";
 }

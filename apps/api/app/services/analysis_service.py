@@ -64,7 +64,7 @@ class AnalysisService:
         estimates = self.estimator.run(candidates)
         summary, report = self.report_generator.run(procedures, candidates, findings, estimates)
         report["structured_note"] = structured_note.model_dump()
-        report["analysis_mode"] = "hybrid_ai" if ai_analysis else "rules"
+        report["analysis_mode"] = "Hybrid AI mode" if ai_analysis else "Rules mode"
         report["ai_assist_status"] = ai_status
 
         analysis = models.Analysis(
@@ -99,7 +99,7 @@ class AnalysisService:
             id=UUID(analysis.id),
             note_id=UUID(analysis.note_id),
             status=analysis.status,
-            analysis_mode=analysis.report.get("analysis_mode", "rules"),
+            analysis_mode=analysis.report.get("analysis_mode", "Rules mode"),
             structured_note=analysis.report.get("structured_note"),
             extracted_procedures=[
                 {
@@ -172,9 +172,11 @@ class AnalysisService:
             log_event(logger, logging.WARNING, "llm.fallback.activated", reason="phi_like_identifier_detected", provider=selected_provider)
             return None, "Possible identifier detected. Remove identifiers before using Hybrid AI mode."
         try:
+            log_event(logger, logging.INFO, "llm.openrouter.analysis.attempted", provider=selected_provider)
             raw_output = self.llm_provider.complete_json(self._openrouter_prompt(note_text))
             validated = AIStructuredOperativeNote.model_validate(raw_output)
             log_event(logger, logging.INFO, "llm.openrouter.validation.success", procedure_count=len(validated.detected_procedures))
+            log_event(logger, logging.INFO, "llm.openrouter.analysis.succeeded", provider=selected_provider)
             return validated, "OpenRouter draft analysis validated."
         except ValidationError as exc:
             log_event(

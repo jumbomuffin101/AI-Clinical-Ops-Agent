@@ -1,3 +1,6 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -5,17 +8,34 @@ from fastapi.exceptions import RequestValidationError
 
 from app.config import get_settings
 from app.db.session import Base, engine
+from app.logging_utils import log_event
 from app.models import db as _db_models
 from app.routes import debug, evaluation, health, notes
 
 settings = get_settings()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Importing model definitions registers tables on SQLAlchemy metadata for local create_all.
 _ = _db_models
 if settings.auto_create_tables and settings.environment.lower() in {"local", "test"}:
     Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log_event(
+        logger,
+        logging.INFO,
+        "llm.startup.config",
+        selected_provider=settings.llm_provider.strip().lower() or "mock",
+        openrouter_key_loaded=bool(settings.openrouter_api_key),
+        openrouter_model=settings.openrouter_model,
+    )
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

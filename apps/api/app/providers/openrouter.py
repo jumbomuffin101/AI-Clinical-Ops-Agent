@@ -86,3 +86,11 @@ class OpenRouterProvider(BaseLLMProvider):
                 response_preview=content[:500],
             )
             raise
+
+    def smoke_test(self) -> bool:
+        try:
+            result = self.complete_json('Return exactly this JSON object: {"ok": true}')
+            return bool(result)
+        except Exception as exc:
+            log_event(logger, logging.WARNING, "llm.openrouter.smoke.failure", error_type=type(exc).__name__, error=str(exc))
+            return False

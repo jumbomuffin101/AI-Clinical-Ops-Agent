@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.agents.billing_auditor import BillingAuditor
 from app.agents.cpt_coder import CPTCoder
@@ -8,10 +10,13 @@ from app.agents.procedure_extractor import ProcedureExtractor
 from app.agents.reimbursement_estimator import ReimbursementEstimator
 from app.agents.report_generator import ReportGenerator
 from app.models.schemas import AIStructuredOperativeNote
+from app.models.schemas import OperativeNote
 from app.parsing.note_parser import OperativeNoteParser
 from app.providers.mock import MockLLMProvider
+from app.providers.openrouter import OpenRouterProvider
 from app.rag.retriever import KeywordRetriever
 from app.services.analysis_service import AnalysisService
+from app.db.session import Base
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -34,6 +39,11 @@ class FakeProvider:
     def complete_json(self, prompt: str) -> dict:
         self.called = True
         return self.payload
+
+
+class FailingProvider:
+    def complete_json(self, prompt: str) -> dict:
+        raise RuntimeError("simulated OpenRouter failure")
 
 
 def _service(monkeypatch, provider_payload: dict | None = None) -> AnalysisService:
@@ -76,6 +86,17 @@ def test_openrouter_without_key_falls_back(monkeypatch):
     assert "fallback" in status.lower()
 
 
+def test_provider_factory_selects_openrouter(monkeypatch):
+    from app.config import get_settings
+    from app.providers.factory import get_llm_provider
+
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    get_settings.cache_clear()
+
+    assert isinstance(get_llm_provider(), OpenRouterProvider)
+
+
 def test_malformed_ai_output_falls_back(monkeypatch):
     service = _service(monkeypatch, {"detected_procedures": [{"name": "Bad", "confidence": 2}]})
 
@@ -83,6 +104,71 @@ def test_malformed_ai_output_falls_back(monkeypatch):
 
     assert ai_analysis is None
     assert "invalid" in status.lower() or "fallback" in status.lower()
+
+
+def test_failing_openrouter_keeps_rules_mode(monkeypatch):
+    service = _service(monkeypatch)
+    service.llm_provider = FailingProvider()
+
+    ai_analysis, status = service._run_ai_analysis("Synthetic operative note with no identifiers.")
+
+    assert ai_analysis is None
+    assert "Rules mode" in status or "rules fallback" in status
+
+
+def test_analysis_mode_changes_when_mock_openrouter_succeeds(monkeypatch):
+    service = _service(
+        monkeypatch,
+        {
+            "parsed_note_sections": {"Procedure": "Diagnostic colonoscopy.", "Findings": "Scope advanced to the cecum.", "Postoperative diagnosis": "Screening."},
+            "detected_procedures": [{"name": "Diagnostic colonoscopy", "evidence": "Procedure section", "confidence": 0.9}],
+            "anatomy": "colon",
+            "laterality": None,
+            "likely_cpt_candidates": [],
+            "documentation_gaps": [],
+            "audit_concerns": [],
+            "confidence_reasoning": ["Clear procedure section."],
+            "unsupported_or_unclear_procedure": False,
+        },
+    )
+
+    ai_analysis, status = service._run_ai_analysis("Procedure: Diagnostic colonoscopy. Findings: Scope advanced to the cecum.")
+
+    assert ai_analysis is not None
+    assert status == "OpenRouter draft analysis validated."
+
+
+def test_create_analysis_returns_hybrid_mode_when_openrouter_validates(monkeypatch, tmp_path):
+    service = _service(
+        monkeypatch,
+        {
+            "parsed_note_sections": {"Procedure": "Diagnostic colonoscopy.", "Findings": "Scope advanced to the cecum.", "Postoperative diagnosis": "Screening."},
+            "detected_procedures": [{"name": "Diagnostic colonoscopy", "evidence": "Procedure section", "confidence": 0.9}],
+            "anatomy": "colon",
+            "laterality": None,
+            "likely_cpt_candidates": [],
+            "documentation_gaps": [],
+            "audit_concerns": [],
+            "confidence_reasoning": ["Clear procedure section."],
+            "unsupported_or_unclear_procedure": False,
+        },
+    )
+    engine = create_engine(f"sqlite:///{tmp_path / 'hybrid.db'}", connect_args={"check_same_thread": False})
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    with SessionLocal() as db:
+        report = service.create_analysis(
+            db,
+            OperativeNote(
+                title="Hybrid mode test",
+                note_text="Procedure: Diagnostic colonoscopy. Findings: Scope advanced to the cecum. Postoperative diagnosis: Screening exam.",
+            ),
+        )
+
+    engine.dispose()
+    assert report.analysis_mode == "Hybrid AI mode"
+    assert report.report["analysis_mode"] == "Hybrid AI mode"
 
 
 def test_phi_like_input_blocks_llm_call(monkeypatch):

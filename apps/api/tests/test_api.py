@@ -71,7 +71,10 @@ def test_llm_debug_endpoint(client):
     assert body["provider"] == "mock"
     assert body["api_key_loaded"] is False
     assert body["openrouter_configured"] is False
+    assert body["provider_available"] is False
+    assert "api_key" not in body
     assert "model" in body
+    assert "app_name" in body
 
 
 def test_evaluation_summary_endpoint(client):
@@ -92,8 +95,8 @@ def test_submit_note_and_get_analysis(client):
     created = create_response.json()
     assert created["cpt_candidates"][0]["code"] == "36821"
     assert created["total_estimated_reimbursement"] > 0
-    assert created["report"]["analysis_mode"] == "rules"
-    assert created["analysis_mode"] == "rules"
+    assert created["report"]["analysis_mode"] == "Rules mode"
+    assert created["analysis_mode"] == "Rules mode"
 
     get_response = client.get(f"/api/analyses/{created['id']}")
     assert get_response.status_code == 200
