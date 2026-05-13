@@ -723,7 +723,7 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
           </p>
           {report ? (
             <div className="mt-3 rounded-xl border border-[#d8e2dc] bg-[#f7fbf8] px-4 py-3">
-              <p className="text-sm font-semibold text-[#34464a]">Analysis mode: {report.report.analysis_mode ?? "Rules mode"}</p>
+              <p className="text-sm font-semibold text-[#34464a]">Analysis mode: {analysisModeLabel(report.report.analysis_mode)}</p>
               <p className="mt-1 text-xs leading-5 text-[#667774]">
                 Hybrid AI mode can better interpret varied synthetic note formats, but all results still require human review.
               </p>
@@ -1359,4 +1359,9 @@ function averageConfidence(report: AnalysisReport) {
 
 function formatDelta(value: number) {
   return `${value >= 0 ? "+" : ""}${value}`;
+}
+
+function analysisModeLabel(value?: string) {
+  if (value === "hybrid_ai") return "Hybrid AI mode";
+  return "Rules mode";
 }

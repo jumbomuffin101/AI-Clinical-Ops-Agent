@@ -1,4 +1,7 @@
+import logging
 from uuid import UUID
+
+from pydantic import ValidationError
 
 from sqlalchemy.orm import Session
 
@@ -8,6 +11,7 @@ from app.agents.procedure_extractor import ProcedureExtractor
 from app.agents.reimbursement_estimator import ReimbursementEstimator
 from app.agents.report_generator import ReportGenerator
 from app.config import get_settings
+from app.logging_utils import log_event
 from app.models import db as models
 from app.models.schemas import (
     AIAuditConcern,
@@ -23,6 +27,9 @@ from app.parsing.note_parser import OperativeNoteParser
 from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
 from app.safety.phi_detector import contains_phi_like_identifier
+
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
@@ -57,7 +64,7 @@ class AnalysisService:
         estimates = self.estimator.run(candidates)
         summary, report = self.report_generator.run(procedures, candidates, findings, estimates)
         report["structured_note"] = structured_note.model_dump()
-        report["analysis_mode"] = "Hybrid AI mode" if ai_analysis else "Rules mode"
+        report["analysis_mode"] = "hybrid_ai" if ai_analysis else "rules"
         report["ai_assist_status"] = ai_status
 
         analysis = models.Analysis(
@@ -92,6 +99,7 @@ class AnalysisService:
             id=UUID(analysis.id),
             note_id=UUID(analysis.note_id),
             status=analysis.status,
+            analysis_mode=analysis.report.get("analysis_mode", "rules"),
             structured_note=analysis.report.get("structured_note"),
             extracted_procedures=[
                 {
@@ -153,16 +161,40 @@ class AnalysisService:
         )
 
     def _run_ai_analysis(self, note_text: str) -> tuple[AIStructuredOperativeNote | None, str]:
-        if self.settings.llm_provider.lower() != "openrouter":
+        selected_provider = self.settings.llm_provider.strip().lower()
+        if selected_provider != "openrouter":
+            log_event(logger, logging.INFO, "llm.fallback.activated", reason="provider_not_openrouter", provider=selected_provider or "mock")
             return None, "Rules mode enabled."
         if not self.settings.openrouter_api_key:
+            log_event(logger, logging.WARNING, "llm.fallback.activated", reason="openrouter_api_key_missing", provider=selected_provider)
             return None, "OpenRouter API key not configured; rules fallback used."
         if contains_phi_like_identifier(note_text):
+            log_event(logger, logging.WARNING, "llm.fallback.activated", reason="phi_like_identifier_detected", provider=selected_provider)
             return None, "Possible identifier detected. Remove identifiers before using Hybrid AI mode."
         try:
-            return AIStructuredOperativeNote.model_validate(self.llm_provider.complete_json(self._openrouter_prompt(note_text))), "OpenRouter draft analysis validated."
-        except Exception:
-            return None, "OpenRouter output unavailable or invalid; rules fallback used."
+            raw_output = self.llm_provider.complete_json(self._openrouter_prompt(note_text))
+            validated = AIStructuredOperativeNote.model_validate(raw_output)
+            log_event(logger, logging.INFO, "llm.openrouter.validation.success", procedure_count=len(validated.detected_procedures))
+            return validated, "OpenRouter draft analysis validated."
+        except ValidationError as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "llm.fallback.activated",
+                reason="openrouter_schema_validation_failed",
+                validation_errors=exc.errors(),
+            )
+            return None, f"OpenRouter output failed schema validation; rules fallback used. {exc.errors()[0]['msg'] if exc.errors() else ''}".strip()
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "llm.fallback.activated",
+                reason="openrouter_request_or_parse_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            return None, f"OpenRouter unavailable or invalid; rules fallback used. {type(exc).__name__}: {exc}"
 
     @staticmethod
     def _openrouter_prompt(note_text: str) -> str:

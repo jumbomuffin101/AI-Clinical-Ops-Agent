@@ -51,7 +51,7 @@ class AIProcedure(BaseModel):
     name: str
     anatomy: str | None = None
     laterality: str | None = None
-    evidence: str
+    evidence: str = ""
     confidence: float = Field(ge=0, le=1)
 
 
@@ -61,14 +61,14 @@ class AICPTCandidate(BaseModel):
     description: str | None = None
     modifiers: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0, le=1)
-    rationale: str
+    rationale: str = ""
 
 
 class AIAuditConcern(BaseModel):
     title: str
-    severity: str
-    explanation: str
-    suggested_action: str
+    severity: str = "medium"
+    explanation: str = ""
+    suggested_action: str = ""
 
 
 class AIStructuredOperativeNote(BaseModel):
@@ -122,6 +122,7 @@ class AnalysisReport(BaseModel):
     id: UUID
     note_id: UUID
     status: str
+    analysis_mode: str | None = None
     structured_note: StructuredOperativeNote | None = None
     extracted_procedures: list[ExtractedProcedure]
     cpt_candidates: list[CPTCodeCandidate]

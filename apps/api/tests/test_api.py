@@ -64,6 +64,16 @@ def test_database_health(client):
     assert body["database"] == "ok"
 
 
+def test_llm_debug_endpoint(client):
+    response = client.get("/debug/llm")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "mock"
+    assert body["api_key_loaded"] is False
+    assert body["openrouter_configured"] is False
+    assert "model" in body
+
+
 def test_evaluation_summary_endpoint(client):
     response = client.get("/api/evaluation/summary")
     assert response.status_code == 200
@@ -82,7 +92,8 @@ def test_submit_note_and_get_analysis(client):
     created = create_response.json()
     assert created["cpt_candidates"][0]["code"] == "36821"
     assert created["total_estimated_reimbursement"] > 0
-    assert created["report"]["analysis_mode"] == "Rules mode"
+    assert created["report"]["analysis_mode"] == "rules"
+    assert created["analysis_mode"] == "rules"
 
     get_response = client.get(f"/api/analyses/{created['id']}")
     assert get_response.status_code == 200
