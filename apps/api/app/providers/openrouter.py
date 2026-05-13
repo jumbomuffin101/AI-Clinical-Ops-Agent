@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -13,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class OpenRouterProvider(BaseLLMProvider):
     endpoint = "https://openrouter.ai/api/v1/chat/completions"
+    _cooldown_until_by_model: dict[str, float] = {}
 
     def __init__(self) -> None:
         settings = get_settings()
@@ -32,6 +35,11 @@ class OpenRouterProvider(BaseLLMProvider):
         settings = get_settings()
         if not settings.openrouter_api_key:
             raise RuntimeError("OPENROUTER_API_KEY is not configured.")
+        cooldown_until = self._cooldown_until_by_model.get(settings.openrouter_model, 0)
+        now = time.time()
+        if cooldown_until > now:
+            remaining = int(cooldown_until - now)
+            raise RuntimeError(f"OpenRouter model is cooling down for {remaining} seconds after a 429 response.")
 
         headers = {
             "Authorization": f"Bearer {settings.openrouter_api_key}",
@@ -59,6 +67,18 @@ class OpenRouterProvider(BaseLLMProvider):
             response = httpx.post(self.endpoint, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                retry_after = exc.response.headers.get("Retry-After")
+                cooldown_seconds = self._retry_after_seconds(retry_after)
+                self._cooldown_until_by_model[settings.openrouter_model] = time.time() + cooldown_seconds
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "llm.openrouter.cooldown.set",
+                    model=settings.openrouter_model,
+                    retry_after=retry_after,
+                    cooldown_seconds=cooldown_seconds,
+                )
             log_event(
                 logger,
                 logging.WARNING,
@@ -94,3 +114,16 @@ class OpenRouterProvider(BaseLLMProvider):
         except Exception as exc:
             log_event(logger, logging.WARNING, "llm.openrouter.smoke.failure", error_type=type(exc).__name__, error=str(exc))
             return False
+
+    @staticmethod
+    def _retry_after_seconds(value: str | None) -> int:
+        if not value:
+            return 60
+        try:
+            return max(1, int(value))
+        except ValueError:
+            try:
+                parsed = parsedate_to_datetime(value)
+                return max(1, int(parsed.timestamp() - time.time()))
+            except Exception:
+                return 60

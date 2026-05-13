@@ -10,7 +10,9 @@ class Settings(BaseSettings):
     llm_provider: str = "mock"
     openai_api_key: str = ""
     openrouter_api_key: str = ""
+    openrouter_enabled: bool = True
     openrouter_model: str = "qwen/qwen-2.5-72b-instruct:free"
+    openrouter_fallback_models: str = ""
     openrouter_site_url: str = ""
     openrouter_app_name: str = "AI Clinical Ops Agent"
     database_url: str = "sqlite:///./clinical_ops.db"
@@ -32,6 +34,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def openrouter_fallback_model_list(self) -> list[str]:
+        return [model.strip() for model in self.openrouter_fallback_models.split(",") if model.strip()]
 
 
 @lru_cache

@@ -25,6 +25,15 @@ SAMPLE_NOTE = (
 )
 
 
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture()
 def client():
     test_db_dir = Path(__file__).resolve().parents[1] / ".test_dbs"
@@ -70,11 +79,57 @@ def test_llm_debug_endpoint(client):
     body = response.json()
     assert body["provider"] == "mock"
     assert body["api_key_loaded"] is False
-    assert body["openrouter_configured"] is False
-    assert body["provider_available"] is False
+    assert body["provider_configured"] is False
+    assert body["provider_available"] is None
     assert "api_key" not in body
-    assert "model" in body
+    assert "primary_model" in body
+    assert "fallback_models" in body
     assert "app_name" in body
+
+
+def test_debug_llm_does_not_smoke_without_query(client, monkeypatch):
+    from app.config import get_settings
+    from app.providers.openrouter import OpenRouterProvider
+
+    called = {"value": False}
+
+    def fake_smoke(self):
+        called["value"] = True
+        return True
+
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    get_settings.cache_clear()
+    monkeypatch.setattr(OpenRouterProvider, "smoke_test", fake_smoke)
+
+    response = client.get("/debug/llm")
+
+    assert response.status_code == 200
+    assert called["value"] is False
+    assert response.json()["provider_configured"] is True
+    assert response.json()["provider_available"] is None
+
+
+def test_debug_llm_smoke_query_calls_provider(client, monkeypatch):
+    from app.config import get_settings
+    from app.providers.openrouter import OpenRouterProvider
+
+    called = {"value": False}
+
+    def fake_smoke(self):
+        called["value"] = True
+        return True
+
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    get_settings.cache_clear()
+    monkeypatch.setattr(OpenRouterProvider, "smoke_test", fake_smoke)
+
+    response = client.get("/debug/llm?smoke=true")
+
+    assert response.status_code == 200
+    assert called["value"] is True
+    assert response.json()["provider_available"] is True
 
 
 def test_evaluation_summary_endpoint(client):

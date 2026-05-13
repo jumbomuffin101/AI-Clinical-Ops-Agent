@@ -1,4 +1,7 @@
+import hashlib
 import logging
+import re
+import time
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -30,6 +33,8 @@ from app.safety.phi_detector import contains_phi_like_identifier
 
 
 logger = logging.getLogger(__name__)
+AI_CACHE_TTL_SECONDS = 600
+AI_RESPONSE_CACHE: dict[str, tuple[float, AIStructuredOperativeNote]] = {}
 
 
 class AnalysisService:
@@ -43,6 +48,7 @@ class AnalysisService:
         self.auditor = BillingAuditor(retriever)
         self.estimator = ReimbursementEstimator(self.settings.fee_schedule_path)
         self.report_generator = ReportGenerator()
+        self._known_note_hashes = self._load_known_note_hashes()
 
     def create_analysis(self, db: Session, payload: OperativeNote) -> AnalysisReport:
         note = models.Note(title=payload.title, note_text=payload.note_text)
@@ -50,14 +56,16 @@ class AnalysisService:
         db.flush()
 
         structured_note = self.parser.parse(payload.note_text)
-        ai_analysis, ai_status = self._run_ai_analysis(payload.note_text)
-        if ai_analysis:
-            structured_note = self._merge_structured_note(structured_note, ai_analysis)
-
         procedures = self.extractor.run(payload.note_text, structured_note)
-        procedures = self._merge_ai_procedures(procedures, ai_analysis, structured_note)
         candidates = self.coder.run(procedures)
         findings = self.auditor.run(candidates, structured_note)
+        ai_analysis, ai_status = self._maybe_run_ai_analysis(payload.note_text, candidates, findings)
+        if ai_analysis:
+            structured_note = self._merge_structured_note(structured_note, ai_analysis)
+            procedures = self.extractor.run(payload.note_text, structured_note)
+            procedures = self._merge_ai_procedures(procedures, ai_analysis, structured_note)
+            candidates = self.coder.run(procedures)
+            findings = self.auditor.run(candidates, structured_note)
         findings.extend(self._ai_audit_findings(ai_analysis))
         if ai_analysis and ai_analysis.unsupported_or_unclear_procedure and not any(finding.category == "unsupported_code" for finding in findings):
             findings.append(self._unsupported_ai_finding())
@@ -168,13 +176,25 @@ class AnalysisService:
         if not self.settings.openrouter_api_key:
             log_event(logger, logging.WARNING, "llm.fallback.activated", reason="openrouter_api_key_missing", provider=selected_provider)
             return None, "OpenRouter API key not configured; rules fallback used."
+        if not self.settings.openrouter_enabled:
+            log_event(logger, logging.INFO, "llm.fallback.activated", reason="openrouter_disabled", provider=selected_provider)
+            return None, "OpenRouter disabled; rules fallback used."
         if contains_phi_like_identifier(note_text):
             log_event(logger, logging.WARNING, "llm.fallback.activated", reason="phi_like_identifier_detected", provider=selected_provider)
             return None, "Possible identifier detected. Remove identifiers before using Hybrid AI mode."
+        cache_key = self._ai_cache_key(note_text)
+        cached = AI_RESPONSE_CACHE.get(cache_key)
+        now = time.time()
+        if cached and cached[0] > now:
+            log_event(logger, logging.INFO, "llm.openrouter.cache.hit", model=self.settings.openrouter_model)
+            return cached[1], "OpenRouter cached draft analysis validated."
+        if cached:
+            AI_RESPONSE_CACHE.pop(cache_key, None)
         try:
             log_event(logger, logging.INFO, "llm.openrouter.analysis.attempted", provider=selected_provider)
             raw_output = self.llm_provider.complete_json(self._openrouter_prompt(note_text))
             validated = AIStructuredOperativeNote.model_validate(raw_output)
+            AI_RESPONSE_CACHE[cache_key] = (time.time() + AI_CACHE_TTL_SECONDS, validated)
             log_event(logger, logging.INFO, "llm.openrouter.validation.success", procedure_count=len(validated.detected_procedures))
             log_event(logger, logging.INFO, "llm.openrouter.analysis.succeeded", provider=selected_provider)
             return validated, "OpenRouter draft analysis validated."
@@ -197,6 +217,48 @@ class AnalysisService:
                 error=str(exc),
             )
             return None, f"OpenRouter unavailable or invalid; rules fallback used. {type(exc).__name__}: {exc}"
+
+    def _maybe_run_ai_analysis(
+        self,
+        note_text: str,
+        candidates: list,
+        findings: list[AuditFinding],
+    ) -> tuple[AIStructuredOperativeNote | None, str]:
+        if self._is_known_deterministic_note(note_text):
+            log_event(logger, logging.INFO, "llm.fallback.activated", reason="known_deterministic_example")
+            return None, "Known deterministic example; rules mode used."
+        if self._rules_need_ai_help(candidates, findings):
+            return self._run_ai_analysis(note_text)
+        log_event(logger, logging.INFO, "llm.fallback.activated", reason="rules_confident_custom_note")
+        return None, "Rules handled the note confidently; OpenRouter not needed."
+
+    @staticmethod
+    def _rules_need_ai_help(candidates: list, findings: list[AuditFinding]) -> bool:
+        if not candidates:
+            return True
+        if any(candidate.code == "99999" or candidate.confidence < 0.85 or not candidate.supported_by_docs for candidate in candidates):
+            return True
+        return any(finding.category in {"unsupported_code", "low_confidence"} for finding in findings)
+
+    def _is_known_deterministic_note(self, note_text: str) -> bool:
+        return self._normalized_hash(note_text) in self._known_note_hashes
+
+    def _ai_cache_key(self, note_text: str) -> str:
+        return hashlib.sha256(f"{self.settings.openrouter_model}:{self._normalize_text(note_text)}".encode("utf-8")).hexdigest()
+
+    def _load_known_note_hashes(self) -> set[str]:
+        notes_path = self.settings.project_root / "data" / "synthetic_notes"
+        if not notes_path.exists():
+            return set()
+        return {self._normalized_hash(path.read_text(encoding="utf-8")) for path in notes_path.glob("*.txt")}
+
+    @classmethod
+    def _normalized_hash(cls, text: str) -> str:
+        return hashlib.sha256(cls._normalize_text(text).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip().lower()
 
     @staticmethod
     def _openrouter_prompt(note_text: str) -> str:
