@@ -132,6 +132,25 @@ def test_debug_llm_smoke_query_calls_provider(client, monkeypatch):
     assert response.json()["provider_available"] is True
 
 
+def test_debug_llm_reports_groq_config(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    get_settings.cache_clear()
+
+    response = client.get("/debug/llm")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "groq"
+    assert body["provider_configured"] is True
+    assert body["provider_available"] is None
+    assert body["model"] == "llama-3.3-70b-versatile"
+    assert body["ai_enabled"] is True
+
+
 def test_evaluation_summary_endpoint(client):
     response = client.get("/api/evaluation/summary")
     assert response.status_code == 200

@@ -171,7 +171,10 @@ Important environment variables:
 
 ```env
 DATABASE_URL=postgresql+psycopg://...
-LLM_PROVIDER=mock
+LLM_PROVIDER=groq
+GROQ_ENABLED=true
+GROQ_API_KEY=your_groq_key
+GROQ_MODEL=llama-3.3-70b-versatile
 ENVIRONMENT=production
 CORS_ORIGINS=https://your-vercel-app.vercel.app
 NEXT_PUBLIC_API_BASE_URL=https://your-render-api.onrender.com
@@ -184,9 +187,9 @@ More deployment notes are in:
 - `docs/deployment.md`
 - `docs/deployment_checklist.md`
 
-## Using OpenRouter
+## Using Groq For Hybrid AI
 
-The app can optionally run in a hybrid AI-assisted mode with OpenRouter. This is off by default.
+The app can optionally run in a hybrid AI-assisted mode with Groq. Rules mode is still the default for local development, but Groq is the preferred deployed AI provider because it is faster and more reliable for this use case than the free OpenRouter models I initially tried.
 
 Default local mode is still:
 
@@ -194,21 +197,38 @@ Default local mode is still:
 LLM_PROVIDER=mock
 ```
 
-To try OpenRouter, set:
+To enable Groq:
+
+```env
+LLM_PROVIDER=groq
+GROQ_ENABLED=true
+GROQ_API_KEY=your_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+Hybrid mode is draft assistance only. The backend validates Groq output with strict Pydantic schemas, then still runs the deterministic parser, CPT rules, audit checks, reimbursement logic, and claim readiness scoring. Known synthetic examples stay in rules mode. Groq is only used when the deterministic result needs help, such as an unsupported procedure, vague wording, missing structure, or low-confidence interpretation.
+
+Groq can enhance:
+
+- free-text procedure interpretation
+- likely procedure family
+- likely CPT category
+- documentation gaps
+- suggested clarifications
+- billing review reasoning
+
+It does not override the deterministic billing safeguards. If Groq is unavailable, returns malformed JSON, or fails validation, the app falls back to rules mode and shows a safe message: `AI enhancement temporarily unavailable. Core billing review completed successfully.`
+
+Do not enter real patient information. Before calling Groq, the backend checks for simple PHI-like identifiers such as MRNs, DOBs, SSNs, phone numbers, emails, and simple address patterns. If one is detected, the Groq call is blocked and the note stays in rules mode.
+
+OpenRouter support still exists as a secondary provider for experimentation:
 
 ```env
 LLM_PROVIDER=openrouter
+OPENROUTER_ENABLED=true
 OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=qwen/qwen-2.5-72b-instruct:free
-OPENROUTER_SITE_URL=http://localhost:3000
-OPENROUTER_APP_NAME=AI Clinical Ops Agent
 ```
-
-The free model name may change over time, so check OpenRouter if that model is no longer available.
-
-Hybrid mode is used as draft assistance only. The backend validates AI output with strict Pydantic schemas, then still runs the deterministic parser, CPT rules, audit checks, reimbursement logic, and claim readiness scoring. If OpenRouter is unavailable, returns malformed JSON, or the output fails validation, the app falls back to rules mode.
-
-Do not enter real patient information. Before calling OpenRouter, the backend checks for simple PHI-like identifiers such as MRNs, DOBs, SSNs, phone numbers, emails, and simple address patterns. If one is detected, the OpenRouter call is blocked and the note stays in rules mode.
 
 ## Local Setup
 

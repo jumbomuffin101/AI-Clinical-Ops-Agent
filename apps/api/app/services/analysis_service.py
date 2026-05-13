@@ -74,6 +74,16 @@ class AnalysisService:
         report["structured_note"] = structured_note.model_dump()
         report["analysis_mode"] = "Hybrid AI mode" if ai_analysis else "Rules mode"
         report["ai_assist_status"] = ai_status
+        report["ai_provider"] = self.settings.llm_provider.strip().lower() if ai_analysis else None
+        report["ai_model"] = self._provider_model(self.settings.llm_provider.strip().lower()) if ai_analysis else None
+        report["ai_procedure_summary"] = ai_analysis.procedure_summary if ai_analysis else None
+        report["ai_reasoning_summary"] = ai_analysis.reasoning_summary if ai_analysis else None
+        report["ai_documentation_gaps"] = ai_analysis.documentation_gaps if ai_analysis else []
+        report["ai_suggested_clarifications"] = ai_analysis.suggested_clarifications if ai_analysis else []
+        report["ai_confidence_reasoning"] = ai_analysis.confidence_reasoning if ai_analysis else []
+        report["ai_likely_procedure_family"] = ai_analysis.likely_procedure_family if ai_analysis else None
+        report["ai_likely_cpt_category"] = ai_analysis.likely_cpt_category if ai_analysis else None
+        report["ai_probable_operative_intent"] = ai_analysis.probable_operative_intent if ai_analysis else None
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -170,15 +180,15 @@ class AnalysisService:
 
     def _run_ai_analysis(self, note_text: str) -> tuple[AIStructuredOperativeNote | None, str]:
         selected_provider = self.settings.llm_provider.strip().lower()
-        if selected_provider != "openrouter":
-            log_event(logger, logging.INFO, "llm.fallback.activated", reason="provider_not_openrouter", provider=selected_provider or "mock")
+        if selected_provider not in {"groq", "openrouter"}:
+            log_event(logger, logging.INFO, "llm.fallback.activated", reason="provider_not_hybrid", provider=selected_provider or "mock")
             return None, "Rules mode enabled."
-        if not self.settings.openrouter_api_key:
-            log_event(logger, logging.WARNING, "llm.fallback.activated", reason="openrouter_api_key_missing", provider=selected_provider)
-            return None, "OpenRouter API key not configured; rules fallback used."
-        if not self.settings.openrouter_enabled:
-            log_event(logger, logging.INFO, "llm.fallback.activated", reason="openrouter_disabled", provider=selected_provider)
-            return None, "OpenRouter disabled; rules fallback used."
+        if not self._provider_enabled(selected_provider):
+            log_event(logger, logging.INFO, "llm.fallback.activated", reason="provider_disabled", provider=selected_provider)
+            return None, "AI enhancement disabled; rules mode used."
+        if not self._provider_api_key_loaded(selected_provider):
+            log_event(logger, logging.WARNING, "llm.fallback.activated", reason="provider_api_key_missing", provider=selected_provider)
+            return None, "AI enhancement not configured; rules mode used."
         if contains_phi_like_identifier(note_text):
             log_event(logger, logging.WARNING, "llm.fallback.activated", reason="phi_like_identifier_detected", provider=selected_provider)
             return None, "Possible identifier detected. Remove identifiers before using Hybrid AI mode."
@@ -186,37 +196,39 @@ class AnalysisService:
         cached = AI_RESPONSE_CACHE.get(cache_key)
         now = time.time()
         if cached and cached[0] > now:
-            log_event(logger, logging.INFO, "llm.openrouter.cache.hit", model=self.settings.openrouter_model)
-            return cached[1], "OpenRouter cached draft analysis validated."
+            log_event(logger, logging.INFO, "llm.cache.hit", provider=selected_provider, model=self._provider_model(selected_provider))
+            return cached[1], "Cached AI enhancement used."
         if cached:
             AI_RESPONSE_CACHE.pop(cache_key, None)
         try:
-            log_event(logger, logging.INFO, "llm.openrouter.analysis.attempted", provider=selected_provider)
-            raw_output = self.llm_provider.complete_json(self._openrouter_prompt(note_text))
+            log_event(logger, logging.INFO, "llm.analysis.attempted", provider=selected_provider, model=self._provider_model(selected_provider))
+            raw_output = self.llm_provider.complete_json(self._ai_prompt(note_text))
             validated = AIStructuredOperativeNote.model_validate(raw_output)
             AI_RESPONSE_CACHE[cache_key] = (time.time() + AI_CACHE_TTL_SECONDS, validated)
-            log_event(logger, logging.INFO, "llm.openrouter.validation.success", procedure_count=len(validated.detected_procedures))
-            log_event(logger, logging.INFO, "llm.openrouter.analysis.succeeded", provider=selected_provider)
-            return validated, "OpenRouter draft analysis validated."
+            log_event(logger, logging.INFO, "llm.validation.success", provider=selected_provider, procedure_count=len(validated.detected_procedures))
+            log_event(logger, logging.INFO, "llm.analysis.succeeded", provider=selected_provider)
+            return validated, f"{self._provider_display_name(selected_provider)} enhancement validated."
         except ValidationError as exc:
             log_event(
                 logger,
                 logging.WARNING,
                 "llm.fallback.activated",
-                reason="openrouter_schema_validation_failed",
+                reason="provider_schema_validation_failed",
+                provider=selected_provider,
                 validation_errors=exc.errors(),
             )
-            return None, f"OpenRouter output failed schema validation; rules fallback used. {exc.errors()[0]['msg'] if exc.errors() else ''}".strip()
+            return None, "AI enhancement temporarily unavailable. Core billing review completed successfully."
         except Exception as exc:
             log_event(
                 logger,
                 logging.WARNING,
                 "llm.fallback.activated",
-                reason="openrouter_request_or_parse_failed",
+                reason="provider_request_or_parse_failed",
+                provider=selected_provider,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-            return None, f"OpenRouter unavailable or invalid; rules fallback used. {type(exc).__name__}: {exc}"
+            return None, "AI enhancement temporarily unavailable. Core billing review completed successfully."
 
     def _maybe_run_ai_analysis(
         self,
@@ -238,13 +250,14 @@ class AnalysisService:
             return True
         if any(candidate.code == "99999" or candidate.confidence < 0.85 or not candidate.supported_by_docs for candidate in candidates):
             return True
-        return any(finding.category in {"unsupported_code", "low_confidence"} for finding in findings)
+        return any(finding.category in {"unsupported_code", "low_confidence", "missing_note_section"} for finding in findings)
 
     def _is_known_deterministic_note(self, note_text: str) -> bool:
         return self._normalized_hash(note_text) in self._known_note_hashes
 
     def _ai_cache_key(self, note_text: str) -> str:
-        return hashlib.sha256(f"{self.settings.openrouter_model}:{self._normalize_text(note_text)}".encode("utf-8")).hexdigest()
+        model = self._provider_model(self.settings.llm_provider.strip().lower())
+        return hashlib.sha256(f"{model}:{self._normalize_text(note_text)}".encode("utf-8")).hexdigest()
 
     def _load_known_note_hashes(self) -> set[str]:
         notes_path = self.settings.project_root / "data" / "synthetic_notes"
@@ -261,16 +274,49 @@ class AnalysisService:
         return re.sub(r"\s+", " ", text).strip().lower()
 
     @staticmethod
-    def _openrouter_prompt(note_text: str) -> str:
+    def _ai_prompt(note_text: str) -> str:
         return (
             "Analyze this synthetic operative note for billing review assistance. "
             "Do not assume this is real patient data. Return JSON only with exactly these top-level keys: "
             "parsed_note_sections, detected_procedures, anatomy, laterality, likely_cpt_candidates, "
-            "documentation_gaps, audit_concerns, confidence_reasoning, unsupported_or_unclear_procedure. "
+            "documentation_gaps, audit_concerns, confidence_reasoning, unsupported_or_unclear_procedure, "
+            "procedure_summary, reasoning_summary, suggested_clarifications, likely_procedure_family, "
+            "likely_cpt_category, probable_operative_intent. "
             "Use null when anatomy or laterality is unclear. Do not invent CPT codes when documentation is vague. "
-            "Mark unsupported_or_unclear_procedure true if the procedure cannot be confidently mapped.\n\n"
+            "Mark unsupported_or_unclear_procedure true if the procedure cannot be confidently mapped. "
+            "Focus on interpreting free text, missing structure, documentation gaps, and clarification requests. "
+            "Do not present billing advice as authoritative.\n\n"
             f"OPERATIVE NOTE:\n{note_text}"
         )
+
+    def _provider_enabled(self, provider: str) -> bool:
+        if provider == "groq":
+            return self.settings.groq_enabled
+        if provider == "openrouter":
+            return self.settings.openrouter_enabled
+        return False
+
+    def _provider_api_key_loaded(self, provider: str) -> bool:
+        if provider == "groq":
+            return bool(self.settings.groq_api_key)
+        if provider == "openrouter":
+            return bool(self.settings.openrouter_api_key)
+        return False
+
+    def _provider_model(self, provider: str) -> str:
+        if provider == "groq":
+            return self.settings.groq_model
+        if provider == "openrouter":
+            return self.settings.openrouter_model
+        return "rules"
+
+    @staticmethod
+    def _provider_display_name(provider: str) -> str:
+        if provider == "groq":
+            return "Groq"
+        if provider == "openrouter":
+            return "OpenRouter"
+        return "Rules"
 
     @staticmethod
     def _merge_structured_note(

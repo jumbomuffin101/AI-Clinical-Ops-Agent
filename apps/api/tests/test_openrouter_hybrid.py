@@ -13,6 +13,7 @@ from app.agents.report_generator import ReportGenerator
 from app.models.schemas import AIStructuredOperativeNote
 from app.models.schemas import OperativeNote
 from app.parsing.note_parser import OperativeNoteParser
+from app.providers.groq import GroqProvider
 from app.providers.mock import MockLLMProvider
 from app.providers.openrouter import OpenRouterProvider
 from app.rag.retriever import KeywordRetriever
@@ -66,6 +67,19 @@ def _service(monkeypatch, provider_payload: dict | None = None) -> AnalysisServi
     return service
 
 
+def _groq_service(monkeypatch, provider_payload: dict | None = None) -> AnalysisService:
+    from app.config import get_settings
+
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    get_settings.cache_clear()
+    service = AnalysisService()
+    if provider_payload is not None:
+        service.llm_provider = FakeProvider(provider_payload)
+    return service
+
+
 def _valid_ai_payload() -> dict:
     return {
         "parsed_note_sections": {"Procedure": "Diagnostic colonoscopy.", "Findings": "Scope advanced to the cecum.", "Postoperative diagnosis": "Screening."},
@@ -77,6 +91,12 @@ def _valid_ai_payload() -> dict:
         "audit_concerns": [],
         "confidence_reasoning": ["Clear procedure section."],
         "unsupported_or_unclear_procedure": False,
+        "procedure_summary": "Diagnostic colonoscopy documented in free text.",
+        "reasoning_summary": "Procedure wording supports endoscopic colon evaluation.",
+        "suggested_clarifications": ["Confirm cecal intubation if not documented."],
+        "likely_procedure_family": "endoscopy",
+        "likely_cpt_category": "diagnostic colonoscopy",
+        "probable_operative_intent": "diagnostic evaluation",
     }
 
 
@@ -105,7 +125,7 @@ def test_openrouter_without_key_falls_back(monkeypatch):
     ai_analysis, status = service._run_ai_analysis("Synthetic note text without identifiers.")
 
     assert ai_analysis is None
-    assert "fallback" in status.lower()
+    assert status == "AI enhancement not configured; rules mode used."
 
 
 def test_provider_factory_selects_openrouter(monkeypatch):
@@ -119,13 +139,37 @@ def test_provider_factory_selects_openrouter(monkeypatch):
     assert isinstance(get_llm_provider(), OpenRouterProvider)
 
 
+def test_groq_provider_initialization(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    get_settings.cache_clear()
+
+    provider = GroqProvider()
+
+    assert provider.model == "llama-3.3-70b-versatile"
+    assert provider.api_key_configured is True
+
+
+def test_provider_factory_selects_groq(monkeypatch):
+    from app.config import get_settings
+    from app.providers.factory import get_llm_provider
+
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    get_settings.cache_clear()
+
+    assert isinstance(get_llm_provider(), GroqProvider)
+
+
 def test_malformed_ai_output_falls_back(monkeypatch):
     service = _service(monkeypatch, {"detected_procedures": [{"name": "Bad", "confidence": 2}]})
 
     ai_analysis, status = service._run_ai_analysis("Synthetic operative note with no identifiers.")
 
     assert ai_analysis is None
-    assert "invalid" in status.lower() or "fallback" in status.lower()
+    assert status == "AI enhancement temporarily unavailable. Core billing review completed successfully."
 
 
 def test_failing_openrouter_keeps_rules_mode(monkeypatch):
@@ -135,20 +179,39 @@ def test_failing_openrouter_keeps_rules_mode(monkeypatch):
     ai_analysis, status = service._run_ai_analysis("Synthetic operative note with no identifiers.")
 
     assert ai_analysis is None
-    assert "Rules mode" in status or "rules fallback" in status
+    assert status == "AI enhancement temporarily unavailable. Core billing review completed successfully."
 
 
-def test_analysis_mode_changes_when_mock_openrouter_succeeds(monkeypatch):
-    service = _service(monkeypatch, _valid_ai_payload())
+def test_successful_groq_analysis(monkeypatch):
+    service = _groq_service(monkeypatch, _valid_ai_payload())
 
     ai_analysis, status = service._run_ai_analysis("Procedure: Diagnostic colonoscopy. Findings: Scope advanced to the cecum.")
 
     assert ai_analysis is not None
-    assert status == "OpenRouter draft analysis validated."
+    assert status == "Groq enhancement validated."
+
+
+def test_malformed_groq_output_falls_back(monkeypatch):
+    service = _groq_service(monkeypatch, {"detected_procedures": [{"name": "Bad", "confidence": 2}]})
+
+    ai_analysis, status = service._run_ai_analysis("Synthetic operative note with no identifiers.")
+
+    assert ai_analysis is None
+    assert status == "AI enhancement temporarily unavailable. Core billing review completed successfully."
+
+
+def test_groq_unavailable_falls_back(monkeypatch):
+    service = _groq_service(monkeypatch)
+    service.llm_provider = FailingProvider()
+
+    ai_analysis, status = service._run_ai_analysis("Synthetic operative note with no identifiers.")
+
+    assert ai_analysis is None
+    assert status == "AI enhancement temporarily unavailable. Core billing review completed successfully."
 
 
 def test_create_analysis_returns_hybrid_mode_when_openrouter_validates(monkeypatch, tmp_path):
-    service = _service(monkeypatch, _valid_ai_payload())
+    service = _groq_service(monkeypatch, _valid_ai_payload())
     engine = create_engine(f"sqlite:///{tmp_path / 'hybrid.db'}", connect_args={"check_same_thread": False})
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -165,10 +228,12 @@ def test_create_analysis_returns_hybrid_mode_when_openrouter_validates(monkeypat
     engine.dispose()
     assert report.analysis_mode == "Hybrid AI mode"
     assert report.report["analysis_mode"] == "Hybrid AI mode"
+    assert report.report["ai_provider"] == "groq"
+    assert report.report["ai_model"] == "llama-3.3-70b-versatile"
 
 
 def test_known_example_skips_openrouter(monkeypatch, tmp_path):
-    service = _service(monkeypatch, _valid_ai_payload())
+    service = _groq_service(monkeypatch, _valid_ai_payload())
     fake_provider = service.llm_provider
     note_text = (ROOT / "data" / "synthetic_notes" / "diagnostic_colonoscopy.txt").read_text(encoding="utf-8")
     engine = create_engine(f"sqlite:///{tmp_path / 'known.db'}", connect_args={"check_same_thread": False})
@@ -184,7 +249,7 @@ def test_known_example_skips_openrouter(monkeypatch, tmp_path):
 
 
 def test_low_confidence_custom_note_triggers_openrouter(monkeypatch, tmp_path):
-    service = _service(monkeypatch, _valid_ai_payload())
+    service = _groq_service(monkeypatch, _valid_ai_payload())
     fake_provider = service.llm_provider
     note_text = "Custom synthetic note: colonoscopy was started, but endpoint documentation is absent and details are incomplete."
     engine = create_engine(f"sqlite:///{tmp_path / 'custom.db'}", connect_args={"check_same_thread": False})
@@ -198,11 +263,26 @@ def test_low_confidence_custom_note_triggers_openrouter(monkeypatch, tmp_path):
     assert fake_provider.calls == 1
 
 
+def test_unsupported_procedure_invokes_groq(monkeypatch, tmp_path):
+    service = _groq_service(monkeypatch, _valid_ai_payload())
+    fake_provider = service.llm_provider
+    note_text = "Custom synthetic operative note: a rare unsupported procedure was performed with unclear anatomy and intent."
+    engine = create_engine(f"sqlite:///{tmp_path / 'unsupported.db'}", connect_args={"check_same_thread": False})
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    with SessionLocal() as db:
+        service.create_analysis(db, OperativeNote(title="Unsupported note", note_text=note_text))
+
+    engine.dispose()
+    assert fake_provider.calls == 1
+
+
 def test_cached_note_does_not_call_openrouter_twice(monkeypatch):
     from app.services.analysis_service import AI_RESPONSE_CACHE
 
     AI_RESPONSE_CACHE.clear()
-    service = _service(monkeypatch, _valid_ai_payload())
+    service = _groq_service(monkeypatch, _valid_ai_payload())
     fake_provider = service.llm_provider
     note = "Custom synthetic unclear operative note with unsupported details."
 

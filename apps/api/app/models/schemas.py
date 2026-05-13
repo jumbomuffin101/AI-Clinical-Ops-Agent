@@ -81,6 +81,12 @@ class AIStructuredOperativeNote(BaseModel):
     audit_concerns: list[AIAuditConcern] = Field(default_factory=list)
     confidence_reasoning: list[str] = Field(default_factory=list)
     unsupported_or_unclear_procedure: bool = False
+    procedure_summary: str | None = None
+    reasoning_summary: str | None = None
+    suggested_clarifications: list[str] = Field(default_factory=list)
+    likely_procedure_family: str | None = None
+    likely_cpt_category: str | None = None
+    probable_operative_intent: str | None = None
 
 
 class CPTCodeCandidate(BaseModel):

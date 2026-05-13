@@ -29,6 +29,8 @@ async def lifespan(app: FastAPI):
         logging.INFO,
         "llm.startup.config",
         selected_provider=settings.llm_provider.strip().lower() or "mock",
+        groq_key_loaded=bool(settings.groq_api_key),
+        groq_model=settings.groq_model,
         openrouter_key_loaded=bool(settings.openrouter_api_key),
         openrouter_model=settings.openrouter_model,
     )

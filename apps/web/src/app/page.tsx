@@ -78,6 +78,16 @@ type AnalysisReport = {
     main_issue?: string;
     analysis_mode?: string;
     ai_assist_status?: string;
+    ai_provider?: string | null;
+    ai_model?: string | null;
+    ai_procedure_summary?: string | null;
+    ai_reasoning_summary?: string | null;
+    ai_documentation_gaps?: string[];
+    ai_suggested_clarifications?: string[];
+    ai_confidence_reasoning?: string[];
+    ai_likely_procedure_family?: string | null;
+    ai_likely_cpt_category?: string | null;
+    ai_probable_operative_intent?: string | null;
     audit_issue_count: number;
     procedure_count: number;
     total_estimated_reimbursement: number;
@@ -407,6 +417,7 @@ export default function Home() {
           <CptCandidates report={report} />
           <AuditFindings report={report} />
           <ImprovementSuggestions report={report} />
+          <AIReviewInsights report={report} />
 
           <Disclosure title="Parsed note structure" open={showParsedStructure} onToggle={() => setShowParsedStructure((value) => !value)}>
             <ParsedNoteStructure report={report} />
@@ -727,6 +738,11 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
               <p className="mt-1 text-xs leading-5 text-[#667774]">
                 Hybrid AI mode can better interpret varied synthetic note formats, but all results still require human review.
               </p>
+              {report.report.ai_provider && report.report.ai_model ? (
+                <p className="mt-1 text-xs text-[#71817d]">
+                  Provider: {providerLabel(report.report.ai_provider)} / {report.report.ai_model}
+                </p>
+              ) : null}
               {report.report.ai_assist_status ? <p className="mt-1 text-xs text-[#71817d]">{report.report.ai_assist_status}</p> : null}
             </div>
           ) : null}
@@ -958,6 +974,70 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
         <FriendlyEmpty title="Improvement suggestions will appear after analysis." text="If the note has missing details or risk flags, this section will explain how to revise it and why it matters." />
       )}
     </SectionCard>
+  );
+}
+
+function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
+  if (!report) {
+    return (
+      <SectionCard title="AI Review Insights" explainer="Hybrid AI interpretation appears here only when the AI provider is used for a note that needs extra review.">
+        <FriendlyEmpty title="No AI review yet." text="Rules mode is enough for known examples and confident deterministic results." />
+      </SectionCard>
+    );
+  }
+
+  const usedAI = analysisModeLabel(report.report.analysis_mode) === "Hybrid AI mode";
+  if (!usedAI) {
+    return (
+      <SectionCard title="AI Review Insights" explainer="Hybrid AI interpretation appears here only when the AI provider is used for a note that needs extra review.">
+        <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+          <p className="font-semibold text-[#34464a]">Rules mode handled this review.</p>
+          <p className="mt-2 text-sm leading-6 text-[#667774]">
+            {report.report.ai_assist_status === "AI enhancement temporarily unavailable. Core billing review completed successfully."
+              ? report.report.ai_assist_status
+              : "No AI enhancement was needed for this note."}
+          </p>
+        </div>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard title="AI Review Insights" explainer="Draft AI interpretation used to clarify free text. Deterministic billing rules still decide final codes, audit warnings, and readiness.">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <InsightBlock
+          title="Procedure interpretation"
+          body={report.report.ai_procedure_summary ?? "No procedure summary returned."}
+          details={[
+            report.report.ai_likely_procedure_family ? `Family: ${report.report.ai_likely_procedure_family}` : null,
+            report.report.ai_likely_cpt_category ? `CPT category: ${report.report.ai_likely_cpt_category}` : null,
+            report.report.ai_probable_operative_intent ? `Intent: ${report.report.ai_probable_operative_intent}` : null,
+          ]}
+        />
+        <InsightBlock title="Billing review reasoning" body={report.report.ai_reasoning_summary ?? "No reasoning summary returned."} details={report.report.ai_confidence_reasoning ?? []} />
+        <InsightBlock title="Missing documentation details" body="Items the AI layer suggested clarifying before relying on the note." details={report.report.ai_documentation_gaps ?? []} />
+        <InsightBlock title="Suggested clarifications" body="Questions or documentation updates that could improve review confidence." details={report.report.ai_suggested_clarifications ?? []} />
+      </div>
+    </SectionCard>
+  );
+}
+
+function InsightBlock({ title, body, details }: { title: string; body: string; details: Array<string | null> }) {
+  const visibleDetails = details.filter(Boolean) as string[];
+  return (
+    <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+      <h3 className="text-sm font-semibold text-[#34464a]">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-[#667774]">{body}</p>
+      {visibleDetails.length ? (
+        <ul className="mt-3 space-y-2 text-sm text-[#34464a]">
+          {visibleDetails.map((item) => (
+            <li key={item} className="rounded-lg bg-[#fffdfa] px-3 py-2">
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -1364,4 +1444,10 @@ function formatDelta(value: number) {
 function analysisModeLabel(value?: string) {
   if (value === "hybrid_ai" || value === "Hybrid AI mode") return "Hybrid AI mode";
   return "Rules mode";
+}
+
+function providerLabel(value: string) {
+  if (value === "groq") return "Groq";
+  if (value === "openrouter") return "OpenRouter";
+  return value;
 }

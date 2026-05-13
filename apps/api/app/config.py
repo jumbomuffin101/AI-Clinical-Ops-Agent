@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     environment: str = "local"
     llm_provider: str = "mock"
     openai_api_key: str = ""
+    groq_enabled: bool = True
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
     openrouter_api_key: str = ""
     openrouter_enabled: bool = True
     openrouter_model: str = "qwen/qwen-2.5-72b-instruct:free"
