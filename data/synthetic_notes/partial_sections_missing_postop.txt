@@ -1,0 +1,9 @@
+Title: Partial structured diagnostic colonoscopy
+
+Indication: Synthetic patient with positive screening test.
+
+Procedure: Diagnostic colonoscopy.
+
+Technique: The colonoscope was advanced to the cecum. The mucosa was inspected on withdrawal.
+
+Complications: None.

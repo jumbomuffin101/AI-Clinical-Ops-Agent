@@ -1,4 +1,4 @@
-from app.models.schemas import AuditFinding, CPTCodeCandidate
+from app.models.schemas import AuditFinding, CPTCodeCandidate, StructuredOperativeNote
 from app.rag.retriever import KeywordRetriever
 
 
@@ -20,7 +20,7 @@ class BillingAuditor:
     def __init__(self, retriever: KeywordRetriever):
         self.retriever = retriever
 
-    def run(self, candidates: list[CPTCodeCandidate]) -> list[AuditFinding]:
+    def run(self, candidates: list[CPTCodeCandidate], structured_note: StructuredOperativeNote | None = None) -> list[AuditFinding]:
         findings: list[AuditFinding] = []
         codes = {candidate.code for candidate in candidates}
 
@@ -79,6 +79,24 @@ class BillingAuditor:
                         documentation_improvement="Document whether the procedure was performed on the left or right side.",
                         why_it_matters="Billing teams need laterality to select LT or RT modifiers and avoid payer follow-up.",
                         evidence_used=evidence_used,
+                    )
+                )
+
+        if structured_note:
+            for section in structured_note.missing_sections:
+                findings.append(
+                    AuditFinding(
+                        title=f"{section} section missing",
+                        severity="low",
+                        category="missing_note_section",
+                        related_code=None,
+                        message=f"{section} section missing.",
+                        explanation=f"The operative note did not include a clear {section.lower()} section.",
+                        recommendation=f"Add {section.lower()} for clearer coding support.",
+                        suggested_action=f"Add {section.lower()} for clearer coding support.",
+                        documentation_improvement=f"Add a clear {section.lower()} section to the operative note.",
+                        why_it_matters="Billing reviewers use note structure to confirm the coded service is supported by the documentation.",
+                        evidence_used=[],
                     )
                 )
 

@@ -1,0 +1,3 @@
+Title poorly formatted appendectomy example
+
+Synthetic patient taken to operating room for abdominal pain. Laparoscopic appendectomy was performed. Appendix was inflamed. Ports were removed and skin was closed. No clean section headers were dictated in this demo note.

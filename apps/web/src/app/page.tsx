@@ -49,9 +49,21 @@ type ReimbursementEstimate = {
   source: string;
 };
 
+type StructuredOperativeNote = {
+  raw_text: string;
+  parsed_sections: Record<string, string>;
+  detected_procedure_name?: string | null;
+  detected_anatomy?: string | null;
+  detected_laterality?: string | null;
+  missing_sections: string[];
+  parsing_confidence: number;
+  structure_quality: string;
+};
+
 type AnalysisReport = {
   id: string;
   summary: string;
+  structured_note?: StructuredOperativeNote | null;
   extracted_procedures: ExtractedProcedure[];
   cpt_candidates: CPTCodeCandidate[];
   audit_findings: AuditFinding[];
@@ -64,6 +76,8 @@ type AnalysisReport = {
     claim_readiness_reasons?: string[];
     recommended_action?: string;
     main_issue?: string;
+    analysis_mode?: string;
+    ai_assist_status?: string;
     audit_issue_count: number;
     procedure_count: number;
     total_estimated_reimbursement: number;
@@ -240,6 +254,7 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [showRevisionHistory, setShowRevisionHistory] = useState(false);
+  const [showParsedStructure, setShowParsedStructure] = useState(false);
   const [revisionImpact, setRevisionImpact] = useState<RevisionImpact | null>(null);
   const [revisionHistory, setRevisionHistory] = useState<RevisionHistoryItem[]>([]);
   const [lastAnalyzedNote, setLastAnalyzedNote] = useState<string | null>(null);
@@ -258,6 +273,7 @@ export default function Home() {
     setAnalysisStarted(false);
     setShowEvidence(false);
     setRevisionImpact(null);
+    setShowParsedStructure(false);
   }
 
   async function loadHistory() {
@@ -303,6 +319,7 @@ export default function Home() {
     setRevisionImpact(null);
     setRevisionHistory([]);
     setLastAnalyzedNote(null);
+    setShowParsedStructure(false);
   }
 
   async function submitNote() {
@@ -390,6 +407,10 @@ export default function Home() {
           <CptCandidates report={report} />
           <AuditFindings report={report} />
           <ImprovementSuggestions report={report} />
+
+          <Disclosure title="Parsed note structure" open={showParsedStructure} onToggle={() => setShowParsedStructure((value) => !value)}>
+            <ParsedNoteStructure report={report} />
+          </Disclosure>
 
           <Disclosure title="Why this result?" open={showEvidence} onToggle={() => setShowEvidence((value) => !value)}>
             <EvidenceUsed report={report} />
@@ -700,6 +721,15 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
           <p className="mt-2 text-sm leading-6 text-[#667774]">
             A score estimating how safe this note is to code and submit based on confidence, audit issues, and documentation completeness.
           </p>
+          {report ? (
+            <div className="mt-3 rounded-xl border border-[#d8e2dc] bg-[#f7fbf8] px-4 py-3">
+              <p className="text-sm font-semibold text-[#34464a]">Analysis mode: {report.report.analysis_mode ?? "Rules mode"}</p>
+              <p className="mt-1 text-xs leading-5 text-[#667774]">
+                Hybrid AI mode can better interpret varied synthetic note formats, but all results still require human review.
+              </p>
+              {report.report.ai_assist_status ? <p className="mt-1 text-xs text-[#71817d]">{report.report.ai_assist_status}</p> : null}
+            </div>
+          ) : null}
         </div>
         <StatusBadge status={report?.report.claim_readiness_status ?? (loading ? "Running" : "Not run")} />
       </div>
@@ -926,6 +956,57 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
         )
       ) : (
         <FriendlyEmpty title="Improvement suggestions will appear after analysis." text="If the note has missing details or risk flags, this section will explain how to revise it and why it matters." />
+      )}
+    </SectionCard>
+  );
+}
+
+function ParsedNoteStructure({ report }: { report: AnalysisReport | null }) {
+  const parsed = report?.structured_note;
+  return (
+    <SectionCard title="Parsed Note Structure" explainer="A preprocessing view of the operative note sections the system found before coding and audit checks run.">
+      {parsed ? (
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryMetric label="Structure quality" value={parsed.structure_quality} />
+            <SummaryMetric label="Parsing confidence" value={formatPercent(parsed.parsing_confidence)} />
+            <SummaryMetric label="Detected anatomy" value={parsed.detected_anatomy ?? "Not detected"} />
+            <SummaryMetric label="Detected laterality" value={parsed.detected_laterality ?? "Not detected"} />
+          </div>
+
+          <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+            <p className="text-sm font-semibold text-[#34464a]">Detected sections</p>
+            {Object.entries(parsed.parsed_sections).length ? (
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                {Object.entries(parsed.parsed_sections).map(([section, text]) => (
+                  <div key={section} className="rounded-lg bg-[#fffdfa] p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{section}</p>
+                    <p className="mt-2 line-clamp-4 text-sm leading-6 text-[#667774]">{text}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-lg bg-[#fffdfa] p-3 text-sm text-[#71817d]">No clear section headers were detected.</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+            <p className="text-sm font-semibold text-[#34464a]">Missing sections</p>
+            {parsed.missing_sections.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {parsed.missing_sections.map((section) => (
+                  <span key={section} className="rounded-full border border-[#e4cfa8] bg-[#fbf3e4] px-3 py-1 text-xs font-semibold text-[#7a5724]">
+                    {section}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-lg bg-[#edf6f2] p-3 text-sm font-medium text-[#245c52]">No critical note sections missing.</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <FriendlyEmpty title="Parsed note structure will appear after analysis." text="The parser will show detected sections, anatomy, laterality, and missing critical sections before the billing review output." />
       )}
     </SectionCard>
   );

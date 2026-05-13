@@ -62,6 +62,8 @@ class ReportGenerator:
         severity_penalties = {"high": 28, "medium": 12, "low": 6, "info": 0}
         category_penalties = {"bundling_conflict": 8, "unsupported_code": 8, "missing_laterality": 10}
         for finding in findings:
+            if finding.category == "missing_note_section":
+                continue
             penalty = severity_penalties.get(finding.severity, 8) + category_penalties.get(finding.category, 0)
             score -= penalty
 

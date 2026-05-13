@@ -19,6 +19,7 @@ The app lets a user:
 - choose or paste a synthetic operative note
 - run a billing analysis
 - identify likely CPT-style code candidates
+- parse the note into operative sections before coding
 - detect documentation or billing risks
 - estimate reimbursement from a local fake fee schedule
 - generate a claim readiness status
@@ -87,6 +88,7 @@ The backend is a FastAPI app with a modular analysis pipeline:
 
 ```text
 Operative note
+  -> structured note parser
   -> procedure extractor
   -> CPT coder
   -> billing auditor
@@ -95,6 +97,12 @@ Operative note
 ```
 
 Each step passes structured Pydantic models to the next step. The logic is intentionally deterministic where possible so it can be tested. The system uses lightweight keyword retrieval over local reference docs instead of pretending to be a fully autonomous medical AI system.
+
+### Structured Note Parsing
+
+Before CPT coding runs, the backend tries to split the operative note into sections like `Procedure`, `Indication`, `Findings`, `Technique`, `Implants`, `Complications`, `Closure`, and `Postoperative diagnosis`.
+
+This matters because coding review usually depends on where documentation appears, not just whether a word exists somewhere in the note. For example, laterality in the procedure or findings section is more useful than a stray phrase elsewhere in the chart. The parser is deliberately heuristic: it looks for common section headers, groups lines, detects likely anatomy/laterality, and reports missing critical sections. It is not a clinical NLP model, but it makes the workflow closer to how real operative notes are reviewed.
 
 ### Database
 
@@ -116,12 +124,14 @@ The backend is Dockerized and can run locally with Docker Compose or deploy to R
 ## Features
 
 - CPT-style candidate generation from synthetic operative notes
+- structured operative note parsing before coding
 - billing and documentation risk detection
 - missing modifier and missing laterality checks
 - bundled-code conflict detection
 - claim readiness scoring
 - recommended next action for each result
 - evidence snippets from local reference docs
+- missing-section audit findings for weak note structure
 - documentation improvement suggestions
 - note revision and reanalysis workflow
 - before/after comparison for revised notes
@@ -173,6 +183,32 @@ More deployment notes are in:
 
 - `docs/deployment.md`
 - `docs/deployment_checklist.md`
+
+## Using OpenRouter
+
+The app can optionally run in a hybrid AI-assisted mode with OpenRouter. This is off by default.
+
+Default local mode is still:
+
+```env
+LLM_PROVIDER=mock
+```
+
+To try OpenRouter, set:
+
+```env
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=your_key_here
+OPENROUTER_MODEL=qwen/qwen-2.5-72b-instruct:free
+OPENROUTER_SITE_URL=http://localhost:3000
+OPENROUTER_APP_NAME=AI Clinical Ops Agent
+```
+
+The free model name may change over time, so check OpenRouter if that model is no longer available.
+
+Hybrid mode is used as draft assistance only. The backend validates AI output with strict Pydantic schemas, then still runs the deterministic parser, CPT rules, audit checks, reimbursement logic, and claim readiness scoring. If OpenRouter is unavailable, returns malformed JSON, or the output fails validation, the app falls back to rules mode.
+
+Do not enter real patient information. Before calling OpenRouter, the backend checks for simple PHI-like identifiers such as MRNs, DOBs, SSNs, phone numbers, emails, and simple address patterns. If one is detected, the OpenRouter call is blocked and the note stays in rules mode.
 
 ## Local Setup
 
@@ -237,6 +273,10 @@ npm run build
 
 ![Revision workflow screenshot placeholder](docs/screenshots/revision-workflow.png)
 
+### Parsed Note Structure
+
+![Parsed note structure screenshot placeholder](docs/screenshots/parsed-note-structure.png)
+
 ### Evaluation Dashboard
 
 ![Evaluation dashboard screenshot placeholder](docs/screenshots/evaluation-dashboard.png)
@@ -250,6 +290,7 @@ This project has important limitations:
 - It is not billing advice and should not be used for real claims.
 - CPT logic is simplified and only covers a small demo code set.
 - Many decisions are deterministic and rule-based by design.
+- Structured note parsing is heuristic and will not handle every real operative note format.
 - The retrieval system is keyword-based, not embedding-based.
 - The fee schedule is fake and only exists for demo purposes.
 - The evaluation set is small and synthetic.
@@ -263,7 +304,7 @@ Some realistic next steps:
 
 - improve retrieval with embeddings and better document chunking
 - expand the synthetic gold-standard evaluation set
-- add note section parsing for indication, procedure, findings, and conclusion
+- improve note section parsing for more real-world dictation formats
 - support more CPT families and modifier rules
 - make reimbursement logic more realistic
 - add reviewer comments and manual override workflow

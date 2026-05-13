@@ -9,19 +9,32 @@ from app.agents.reimbursement_estimator import ReimbursementEstimator
 from app.agents.report_generator import ReportGenerator
 from app.config import get_settings
 from app.models import db as models
-from app.models.schemas import AnalysisListItem, AnalysisReport, OperativeNote
+from app.models.schemas import (
+    AIAuditConcern,
+    AIStructuredOperativeNote,
+    AnalysisListItem,
+    AnalysisReport,
+    AuditFinding,
+    ExtractedProcedure,
+    OperativeNote,
+    StructuredOperativeNote,
+)
+from app.parsing.note_parser import OperativeNoteParser
 from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
+from app.safety.phi_detector import contains_phi_like_identifier
 
 
 class AnalysisService:
     def __init__(self) -> None:
-        settings = get_settings()
-        retriever = KeywordRetriever(settings.reference_docs_path)
-        self.extractor = ProcedureExtractor(get_llm_provider())
+        self.settings = get_settings()
+        retriever = KeywordRetriever(self.settings.reference_docs_path)
+        self.llm_provider = get_llm_provider()
+        self.extractor = ProcedureExtractor(self.llm_provider)
+        self.parser = OperativeNoteParser()
         self.coder = CPTCoder(retriever)
         self.auditor = BillingAuditor(retriever)
-        self.estimator = ReimbursementEstimator(settings.fee_schedule_path)
+        self.estimator = ReimbursementEstimator(self.settings.fee_schedule_path)
         self.report_generator = ReportGenerator()
 
     def create_analysis(self, db: Session, payload: OperativeNote) -> AnalysisReport:
@@ -29,11 +42,23 @@ class AnalysisService:
         db.add(note)
         db.flush()
 
-        procedures = self.extractor.run(payload.note_text)
+        structured_note = self.parser.parse(payload.note_text)
+        ai_analysis, ai_status = self._run_ai_analysis(payload.note_text)
+        if ai_analysis:
+            structured_note = self._merge_structured_note(structured_note, ai_analysis)
+
+        procedures = self.extractor.run(payload.note_text, structured_note)
+        procedures = self._merge_ai_procedures(procedures, ai_analysis, structured_note)
         candidates = self.coder.run(procedures)
-        findings = self.auditor.run(candidates)
+        findings = self.auditor.run(candidates, structured_note)
+        findings.extend(self._ai_audit_findings(ai_analysis))
+        if ai_analysis and ai_analysis.unsupported_or_unclear_procedure and not any(finding.category == "unsupported_code" for finding in findings):
+            findings.append(self._unsupported_ai_finding())
         estimates = self.estimator.run(candidates)
         summary, report = self.report_generator.run(procedures, candidates, findings, estimates)
+        report["structured_note"] = structured_note.model_dump()
+        report["analysis_mode"] = "Hybrid AI mode" if ai_analysis else "Rules mode"
+        report["ai_assist_status"] = ai_status
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -67,6 +92,7 @@ class AnalysisService:
             id=UUID(analysis.id),
             note_id=UUID(analysis.note_id),
             status=analysis.status,
+            structured_note=analysis.report.get("structured_note"),
             extracted_procedures=[
                 {
                     "id": UUID(row.id),
@@ -124,6 +150,129 @@ class AnalysisService:
             summary=analysis.summary,
             report=analysis.report,
             created_at=analysis.created_at,
+        )
+
+    def _run_ai_analysis(self, note_text: str) -> tuple[AIStructuredOperativeNote | None, str]:
+        if self.settings.llm_provider.lower() != "openrouter":
+            return None, "Rules mode enabled."
+        if not self.settings.openrouter_api_key:
+            return None, "OpenRouter API key not configured; rules fallback used."
+        if contains_phi_like_identifier(note_text):
+            return None, "Possible identifier detected. Remove identifiers before using Hybrid AI mode."
+        try:
+            return AIStructuredOperativeNote.model_validate(self.llm_provider.complete_json(self._openrouter_prompt(note_text))), "OpenRouter draft analysis validated."
+        except Exception:
+            return None, "OpenRouter output unavailable or invalid; rules fallback used."
+
+    @staticmethod
+    def _openrouter_prompt(note_text: str) -> str:
+        return (
+            "Analyze this synthetic operative note for billing review assistance. "
+            "Do not assume this is real patient data. Return JSON only with exactly these top-level keys: "
+            "parsed_note_sections, detected_procedures, anatomy, laterality, likely_cpt_candidates, "
+            "documentation_gaps, audit_concerns, confidence_reasoning, unsupported_or_unclear_procedure. "
+            "Use null when anatomy or laterality is unclear. Do not invent CPT codes when documentation is vague. "
+            "Mark unsupported_or_unclear_procedure true if the procedure cannot be confidently mapped.\n\n"
+            f"OPERATIVE NOTE:\n{note_text}"
+        )
+
+    @staticmethod
+    def _merge_structured_note(
+        deterministic: StructuredOperativeNote,
+        ai_analysis: AIStructuredOperativeNote,
+    ) -> StructuredOperativeNote:
+        sections = {**ai_analysis.parsed_note_sections, **deterministic.parsed_sections}
+        missing_sections = [section for section in OperativeNoteParser.CRITICAL_SECTIONS if section not in sections]
+        confidence = max(deterministic.parsing_confidence, 0.7 if ai_analysis.parsed_note_sections else deterministic.parsing_confidence)
+        return StructuredOperativeNote(
+            raw_text=deterministic.raw_text,
+            parsed_sections=sections,
+            detected_procedure_name=deterministic.detected_procedure_name or (ai_analysis.detected_procedures[0].name if ai_analysis.detected_procedures else None),
+            detected_anatomy=deterministic.detected_anatomy or ai_analysis.anatomy,
+            detected_laterality=deterministic.detected_laterality,
+            missing_sections=missing_sections,
+            parsing_confidence=confidence,
+            structure_quality=OperativeNoteParser._quality(confidence),
+        )
+
+    @staticmethod
+    def _merge_ai_procedures(
+        procedures: list[ExtractedProcedure],
+        ai_analysis: AIStructuredOperativeNote | None,
+        structured_note: StructuredOperativeNote,
+    ) -> list[ExtractedProcedure]:
+        if not ai_analysis or ai_analysis.unsupported_or_unclear_procedure:
+            return procedures
+        if not procedures or procedures[0].name != "Unclassified operative procedure":
+            return procedures
+
+        known_names = set(CPTCoder.CODEBOOK)
+        candidates = [procedure for procedure in ai_analysis.detected_procedures if procedure.name in known_names and procedure.confidence >= 0.65]
+        if not candidates:
+            return procedures
+
+        procedure = max(candidates, key=lambda item: item.confidence)
+        return [
+            ExtractedProcedure(
+                name=procedure.name,
+                body_site=procedure.anatomy or structured_note.detected_anatomy,
+                approach=None,
+                laterality=procedure.laterality or structured_note.detected_laterality,
+                evidence=procedure.evidence,
+                confidence=min(procedure.confidence, 0.82),
+            )
+        ]
+
+    @staticmethod
+    def _ai_audit_findings(ai_analysis: AIStructuredOperativeNote | None) -> list[AuditFinding]:
+        if not ai_analysis:
+            return []
+        findings: list[AuditFinding] = []
+        for concern in ai_analysis.audit_concerns:
+            findings.append(
+                AuditFinding(
+                    title=concern.title,
+                    severity=concern.severity if concern.severity in {"high", "medium", "low", "info"} else "medium",
+                    category="ai_audit_concern",
+                    message=concern.title,
+                    explanation=concern.explanation,
+                    recommendation=concern.suggested_action,
+                    suggested_action=concern.suggested_action,
+                    documentation_improvement=concern.suggested_action,
+                    why_it_matters="Hybrid AI mode raised this as a draft concern for human billing review.",
+                    evidence_used=[],
+                )
+            )
+        for gap in ai_analysis.documentation_gaps:
+            findings.append(
+                AuditFinding(
+                    title="Documentation gap",
+                    severity="low",
+                    category="ai_documentation_gap",
+                    message=gap,
+                    explanation=gap,
+                    recommendation="Clarify this documentation gap before relying on AI-assisted coding suggestions.",
+                    suggested_action="Clarify this documentation gap before relying on AI-assisted coding suggestions.",
+                    documentation_improvement=gap,
+                    why_it_matters="Clearer documentation improves coding support and reduces review ambiguity.",
+                    evidence_used=[],
+                )
+            )
+        return findings
+
+    @staticmethod
+    def _unsupported_ai_finding() -> AuditFinding:
+        return AuditFinding(
+            title="Unsupported or unclear procedure",
+            severity="high",
+            category="unsupported_code",
+            message="Unsupported or unclear procedure.",
+            explanation="Hybrid AI mode could not confidently map the note to a supported procedure.",
+            recommendation="Clarify the operative procedure and route to coder review.",
+            suggested_action="Clarify the operative procedure and route to coder review.",
+            documentation_improvement="Document the exact procedure performed, anatomy, approach, and therapeutic intent.",
+            why_it_matters="The system should not invent a high-confidence billing code when the documented procedure is unclear.",
+            evidence_used=[],
         )
 
     def list_recent_analyses(self, db: Session, limit: int = 10) -> list[AnalysisListItem]:

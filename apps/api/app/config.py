@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     environment: str = "local"
     llm_provider: str = "mock"
     openai_api_key: str = ""
+    openrouter_api_key: str = ""
+    openrouter_model: str = "qwen/qwen-2.5-72b-instruct:free"
+    openrouter_site_url: str = ""
+    openrouter_app_name: str = "AI Clinical Ops Agent"
     database_url: str = "sqlite:///./clinical_ops.db"
     cors_origins: str = "http://localhost:3000"
     auto_create_tables: bool = True

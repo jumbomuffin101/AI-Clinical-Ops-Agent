@@ -1,4 +1,5 @@
 from app.models.schemas import ExtractedProcedure
+from app.models.schemas import StructuredOperativeNote
 from app.providers.base import BaseLLMProvider
 
 
@@ -6,9 +7,10 @@ class ProcedureExtractor:
     def __init__(self, llm_provider: BaseLLMProvider):
         self.llm_provider = llm_provider
 
-    def run(self, note_text: str) -> list[ExtractedProcedure]:
-        text = note_text.lower()
-        laterality = self._laterality(text)
+    def run(self, note_text: str, structured_note: StructuredOperativeNote | None = None) -> list[ExtractedProcedure]:
+        analysis_text = self._analysis_text(note_text, structured_note)
+        text = analysis_text.lower()
+        laterality = structured_note.detected_laterality if structured_note else self._laterality(text)
         procedures: list[ExtractedProcedure] = []
 
         if "av fistula" in text or "arteriovenous fistula" in text:
@@ -126,6 +128,14 @@ class ProcedureExtractor:
             )
 
         return procedures
+
+    @staticmethod
+    def _analysis_text(note_text: str, structured_note: StructuredOperativeNote | None) -> str:
+        if not structured_note:
+            return note_text
+        sections = structured_note.parsed_sections
+        preferred = " ".join(sections.get(section, "") for section in ["Procedure", "Findings", "Technique"])
+        return preferred if preferred.strip() else note_text
 
     @staticmethod
     def _laterality(text: str) -> str | None:

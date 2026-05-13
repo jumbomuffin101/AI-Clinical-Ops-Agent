@@ -36,6 +36,53 @@ class EvidenceSnippet(BaseModel):
     score: int | None = None
 
 
+class StructuredOperativeNote(BaseModel):
+    raw_text: str
+    parsed_sections: dict[str, str] = Field(default_factory=dict)
+    detected_procedure_name: str | None = None
+    detected_anatomy: str | None = None
+    detected_laterality: str | None = None
+    missing_sections: list[str] = Field(default_factory=list)
+    parsing_confidence: float = Field(default=0, ge=0, le=1)
+    structure_quality: str = "Poorly structured note"
+
+
+class AIProcedure(BaseModel):
+    name: str
+    anatomy: str | None = None
+    laterality: str | None = None
+    evidence: str
+    confidence: float = Field(ge=0, le=1)
+
+
+class AICPTCandidate(BaseModel):
+    procedure_name: str
+    code: str | None = None
+    description: str | None = None
+    modifiers: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    rationale: str
+
+
+class AIAuditConcern(BaseModel):
+    title: str
+    severity: str
+    explanation: str
+    suggested_action: str
+
+
+class AIStructuredOperativeNote(BaseModel):
+    parsed_note_sections: dict[str, str] = Field(default_factory=dict)
+    detected_procedures: list[AIProcedure] = Field(default_factory=list)
+    anatomy: str | None = None
+    laterality: str | None = None
+    likely_cpt_candidates: list[AICPTCandidate] = Field(default_factory=list)
+    documentation_gaps: list[str] = Field(default_factory=list)
+    audit_concerns: list[AIAuditConcern] = Field(default_factory=list)
+    confidence_reasoning: list[str] = Field(default_factory=list)
+    unsupported_or_unclear_procedure: bool = False
+
+
 class CPTCodeCandidate(BaseModel):
     id: UUID | None = None
     procedure_name: str
@@ -75,6 +122,7 @@ class AnalysisReport(BaseModel):
     id: UUID
     note_id: UUID
     status: str
+    structured_note: StructuredOperativeNote | None = None
     extracted_procedures: list[ExtractedProcedure]
     cpt_candidates: list[CPTCodeCandidate]
     audit_findings: list[AuditFinding]

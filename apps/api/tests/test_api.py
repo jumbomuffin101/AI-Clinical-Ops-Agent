@@ -82,6 +82,7 @@ def test_submit_note_and_get_analysis(client):
     created = create_response.json()
     assert created["cpt_candidates"][0]["code"] == "36821"
     assert created["total_estimated_reimbursement"] > 0
+    assert created["report"]["analysis_mode"] == "Rules mode"
 
     get_response = client.get(f"/api/analyses/{created['id']}")
     assert get_response.status_code == 200
