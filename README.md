@@ -311,9 +311,3 @@ Some realistic next steps:
 - expand the provider abstraction beyond the mock provider
 - add frontend component tests for revision workflows
 - add role-based views for coder, auditor, and operations reviewer
-
-## Resume Bullets
-
-- Built a full-stack healthcare revenue cycle demo using FastAPI, Next.js, PostgreSQL, Docker, and Alembic to analyze synthetic operative notes and generate structured claim readiness reports.
-- Designed a modular analysis pipeline for procedure extraction, CPT candidate generation, billing audit checks, reimbursement estimation, evidence retrieval, and revision comparison.
-- Added evaluation tooling, integration tests, synthetic benchmark data, and deployment documentation to make the project runnable, testable, and presentable as a portfolio project.
