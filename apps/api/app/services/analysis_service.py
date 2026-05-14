@@ -215,6 +215,15 @@ class AnalysisService:
                 confidence_reasoning_type=type(raw_output.get("confidence_reasoning")).__name__ if isinstance(raw_output, dict) else type(raw_output).__name__,
             )
             log_event(logger, logging.INFO, "llm.response.normalized", provider=selected_provider, normalization_applied=normalization_applied)
+            log_event(
+                logger,
+                logging.INFO,
+                "llm.output.normalized",
+                provider=selected_provider,
+                normalization_applied=normalization_applied,
+                original_field_types=self._field_types(raw_output),
+                normalized_field_counts=self._field_counts(normalized_output),
+            )
             validated = AIStructuredOperativeNote.model_validate(normalized_output)
             AI_RESPONSE_CACHE[cache_key] = (time.time() + AI_CACHE_TTL_SECONDS, validated)
             log_event(logger, logging.INFO, "llm.validation.success", provider=selected_provider, procedure_count=len(validated.detected_procedures))
@@ -317,6 +326,14 @@ class AnalysisService:
 
         normalized = dict(raw_output)
         applied = False
+        aliases = {
+            "procedures": "detected_procedures",
+            "concerns": "audit_concerns",
+        }
+        for alias, canonical in aliases.items():
+            if canonical not in normalized and alias in normalized:
+                normalized[canonical] = normalized[alias]
+                applied = True
         defaults = {
             "parsed_note_sections": {},
             "detected_procedures": [],
@@ -349,10 +366,10 @@ class AnalysisService:
                     normalized_procedures.append(
                         {
                             "name": item,
-                            "procedure_family": None,
+                            "procedure_family": "unknown",
                             "anatomy": None,
                             "laterality": None,
-                            "confidence": 0.45,
+                            "confidence": 0.65,
                             "supporting_text": item,
                             "evidence": item,
                         }
@@ -361,7 +378,7 @@ class AnalysisService:
                 elif isinstance(item, dict):
                     procedure = dict(item)
                     procedure.setdefault("name", "Unclear procedure")
-                    procedure.setdefault("procedure_family", None)
+                    procedure.setdefault("procedure_family", "unknown")
                     procedure.setdefault("anatomy", None)
                     procedure.setdefault("laterality", None)
                     procedure.setdefault("confidence", 0.5)
@@ -382,10 +399,10 @@ class AnalysisService:
                 if isinstance(item, str):
                     normalized_concerns.append(
                         {
-                            "title": item,
+                            "title": "Documentation concern",
                             "severity": "medium",
                             "explanation": item,
-                            "suggested_action": "Review this concern before final billing.",
+                            "suggested_action": "Review the operative note for missing coding-support details.",
                         }
                     )
                     applied = True
@@ -437,7 +454,55 @@ class AnalysisService:
             normalized["likely_cpt_candidates"] = normalized["cpt_candidates"]
             applied = True
 
+        if "unsupported_or_unclear_procedure" not in raw_output:
+            normalized["unsupported_or_unclear_procedure"] = not bool(normalized.get("detected_procedures"))
+            applied = True
+
+        if not normalized.get("procedure_summary") and normalized.get("detected_procedures"):
+            names = [item.get("name", "") for item in normalized["detected_procedures"] if isinstance(item, dict) and item.get("name")]
+            if names:
+                normalized["procedure_summary"] = "AI identified: " + ", ".join(names)
+                applied = True
+        if not normalized.get("reasoning_summary") and normalized.get("confidence_reasoning"):
+            normalized["reasoning_summary"] = " ".join(str(item) for item in normalized["confidence_reasoning"])
+            applied = True
+
         return normalized, applied
+
+    @staticmethod
+    def _field_types(raw_output: object) -> dict[str, str]:
+        if not isinstance(raw_output, dict):
+            return {"root": type(raw_output).__name__}
+        keys = [
+            "parsed_note_sections",
+            "detected_procedures",
+            "procedures",
+            "likely_cpt_candidates",
+            "cpt_candidates",
+            "audit_concerns",
+            "concerns",
+            "confidence_reasoning",
+            "documentation_gaps",
+        ]
+        return {key: type(raw_output.get(key)).__name__ for key in keys if key in raw_output}
+
+    @staticmethod
+    def _field_counts(normalized_output: dict) -> dict[str, int]:
+        keys = [
+            "parsed_note_sections",
+            "detected_procedures",
+            "likely_cpt_candidates",
+            "cpt_candidates",
+            "audit_concerns",
+            "confidence_reasoning",
+            "documentation_gaps",
+        ]
+        counts: dict[str, int] = {}
+        for key in keys:
+            value = normalized_output.get(key)
+            if isinstance(value, (list, dict)):
+                counts[key] = len(value)
+        return counts
 
     def _provider_enabled(self, provider: str) -> bool:
         if provider == "groq":

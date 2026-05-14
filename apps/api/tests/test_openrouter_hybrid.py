@@ -210,7 +210,8 @@ def test_groq_string_detected_procedures_get_normalized(monkeypatch):
     assert ai_analysis is not None
     assert status == "Groq enhancement validated."
     assert ai_analysis.detected_procedures[0].name == "diagnostic colonoscopy"
-    assert ai_analysis.detected_procedures[0].confidence == 0.45
+    assert ai_analysis.detected_procedures[0].procedure_family == "unknown"
+    assert ai_analysis.detected_procedures[0].confidence == 0.65
 
 
 def test_groq_string_audit_concerns_get_normalized(monkeypatch):
@@ -221,7 +222,8 @@ def test_groq_string_audit_concerns_get_normalized(monkeypatch):
     ai_analysis, _ = service._run_ai_analysis("Custom vague colon procedure note.")
 
     assert ai_analysis is not None
-    assert ai_analysis.audit_concerns[0].title == "Missing procedure detail"
+    assert ai_analysis.audit_concerns[0].title == "Documentation concern"
+    assert ai_analysis.audit_concerns[0].explanation == "Missing procedure detail"
     assert ai_analysis.audit_concerns[0].severity == "medium"
 
 
@@ -258,6 +260,72 @@ def test_non_json_like_groq_output_falls_back(monkeypatch):
 
     assert ai_analysis is None
     assert status == "AI enhancement temporarily unavailable. Core billing review completed successfully."
+
+
+def test_exact_groq_loose_shape_normalizes_and_validates(monkeypatch):
+    payload = {
+        "detected_procedures": [
+            "Exploratory laparotomy",
+            "Small bowel resection",
+            "Stapled primary anastomosis",
+        ],
+        "likely_cpt_candidates": None,
+        "audit_concerns": [
+            "Potential for incomplete coding due to lack of specific details",
+        ],
+        "confidence_reasoning": "The note provides a clear description of the procedure and findings, but lacks specific details on the extent of resection and laterality",
+    }
+    service = _groq_service(monkeypatch, payload)
+
+    ai_analysis, status = service._run_ai_analysis("Custom synthetic exploratory laparotomy note with small bowel resection.")
+
+    assert ai_analysis is not None
+    assert status == "Groq enhancement validated."
+    assert [procedure.name for procedure in ai_analysis.detected_procedures] == [
+        "Exploratory laparotomy",
+        "Small bowel resection",
+        "Stapled primary anastomosis",
+    ]
+    assert ai_analysis.likely_cpt_candidates == []
+    assert ai_analysis.audit_concerns[0].title == "Documentation concern"
+    assert ai_analysis.audit_concerns[0].suggested_action == "Review the operative note for missing coding-support details."
+    assert ai_analysis.confidence_reasoning == [
+        "The note provides a clear description of the procedure and findings, but lacks specific details on the extent of resection and laterality"
+    ]
+    assert ai_analysis.procedure_summary == "AI identified: Exploratory laparotomy, Small bowel resection, Stapled primary anastomosis"
+
+
+def test_exact_groq_loose_shape_produces_hybrid_mode_and_summary(monkeypatch, tmp_path):
+    payload = {
+        "detected_procedures": [
+            "Exploratory laparotomy",
+            "Small bowel resection",
+            "Stapled primary anastomosis",
+        ],
+        "likely_cpt_candidates": None,
+        "audit_concerns": [
+            "Potential for incomplete coding due to lack of specific details",
+        ],
+        "confidence_reasoning": "The note provides a clear description of the procedure and findings, but lacks specific details on the extent of resection and laterality",
+    }
+    service = _groq_service(monkeypatch, payload)
+    engine = create_engine(f"sqlite:///{tmp_path / 'loose_groq.db'}", connect_args={"check_same_thread": False})
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    with SessionLocal() as db:
+        report = service.create_analysis(
+            db,
+            OperativeNote(
+                title="Exploratory laparotomy",
+                note_text="Custom synthetic note: exploratory laparotomy with small bowel resection and stapled primary anastomosis was performed.",
+            ),
+        )
+
+    engine.dispose()
+    assert report.analysis_mode == "Hybrid AI mode"
+    assert report.report["analysis_mode"] == "Hybrid AI mode"
+    assert report.report["ai_procedure_summary"] == "AI identified: Exploratory laparotomy, Small bowel resection, Stapled primary anastomosis"
 
 
 def test_groq_unavailable_falls_back(monkeypatch):
