@@ -262,11 +262,11 @@ export default function Home() {
   const [evaluationLoading, setEvaluationLoading] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showEvidence, setShowEvidence] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [showRevisionHistory, setShowRevisionHistory] = useState(false);
   const [showParsedStructure, setShowParsedStructure] = useState(false);
+  const [showBillingDetails, setShowBillingDetails] = useState(false);
   const [revisionImpact, setRevisionImpact] = useState<RevisionImpact | null>(null);
   const [revisionHistory, setRevisionHistory] = useState<RevisionHistoryItem[]>([]);
   const [lastAnalyzedNote, setLastAnalyzedNote] = useState<string | null>(null);
@@ -283,7 +283,6 @@ export default function Home() {
     setReport(null);
     setError(null);
     setAnalysisStarted(false);
-    setShowEvidence(false);
     setRevisionImpact(null);
     setShowParsedStructure(false);
   }
@@ -327,7 +326,6 @@ export default function Home() {
     setReport(null);
     setAnalysisStarted(false);
     setError(null);
-    setShowEvidence(false);
     setRevisionImpact(null);
     setRevisionHistory([]);
     setLastAnalyzedNote(null);
@@ -407,30 +405,28 @@ export default function Home() {
             <AnalysisStagePanel visible={analysisStarted || Boolean(report)} loading={loading} complete={Boolean(report)} />
             <RevisionImpactCard impact={revisionImpact} />
             <ResultSummary report={report} loading={loading} />
-            <KeyFindings report={report} />
           </div>
         </div>
 
         <div className="mt-6 space-y-5">
-          <Disclosure title="View system evaluation" open={showEvaluation} onToggle={() => setShowEvaluation((value) => !value)}>
-            <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
-          </Disclosure>
-
-          <CptCandidates report={report} />
+          {report && analysisModeLabel(report.report.analysis_mode) === "Hybrid AI mode" ? <AIReviewInsights report={report} /> : null}
           <AuditFindings report={report} />
           <ImprovementSuggestions report={report} />
-          <AIReviewInsights report={report} />
+
+          <Disclosure title="Billing code details" open={showBillingDetails} onToggle={() => setShowBillingDetails((value) => !value)}>
+            <CptCandidates report={report} />
+          </Disclosure>
 
           <Disclosure title="Parsed note structure" open={showParsedStructure} onToggle={() => setShowParsedStructure((value) => !value)}>
             <ParsedNoteStructure report={report} />
           </Disclosure>
 
-          <Disclosure title="Why this result?" open={showEvidence} onToggle={() => setShowEvidence((value) => !value)}>
-            <EvidenceUsed report={report} />
+          <Disclosure title="Recent Reviews" open={showHistory} onToggle={() => setShowHistory((value) => !value)}>
+            <RecentAnalyses history={history} loading={historyLoading} onLoad={loadAnalysis} />
           </Disclosure>
 
-          <Disclosure title="Recent analyses" open={showHistory} onToggle={() => setShowHistory((value) => !value)}>
-            <RecentAnalyses history={history} loading={historyLoading} onLoad={loadAnalysis} />
+          <Disclosure title="System evaluation" open={showEvaluation} onToggle={() => setShowEvaluation((value) => !value)}>
+            <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
           </Disclosure>
 
           <Disclosure title="Revision history" open={showRevisionHistory} onToggle={() => setShowRevisionHistory((value) => !value)}>
@@ -455,7 +451,7 @@ function ProductHeader() {
             <p className="text-sm font-semibold text-[#58716c]">Healthcare revenue cycle demo</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#1f2d33]">AI Clinical Ops Agent</h1>
             <p className="mt-3 max-w-4xl text-base leading-7 text-[#586b69]">
-              Turn a synthetic operative note into CPT candidates, billing risk flags, reimbursement estimates, and a claim readiness report.
+              Review a synthetic operative note, identify likely procedures, flag documentation risks, and decide what a human billing reviewer should check next.
             </p>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[#71817d]">
               Simulates how a billing operations team reviews operative notes before CPT submission.
@@ -468,9 +464,9 @@ function ProductHeader() {
         </div>
 
         <div className="mt-7 grid gap-4 md:grid-cols-3">
-          <ValueCard title="Identify likely CPT codes" text="Extract procedures and suggest billing-code candidates from the note." />
-          <ValueCard title="Flag billing/documentation risks" text="Surface missing details, low-confidence coding, and bundling concerns." />
-          <ValueCard title="Estimate reimbursement impact" text="Map suggested codes to a local synthetic fee schedule." />
+          <ValueCard title="Identify the procedure" text="Summarize what operation the note appears to describe." />
+          <ValueCard title="Flag review risks" text="Surface missing details, ambiguity, and billing-review concerns." />
+          <ValueCard title="Suggest next steps" text="Explain what a human coder or billing reviewer should verify." />
         </div>
       </div>
     </header>
@@ -488,9 +484,9 @@ function ValueCard({ title, text }: { title: string; text: string }) {
 
 function WorkflowSteps() {
   const steps = [
-    ["Step 1", "Choose or paste a synthetic operative note"],
-    ["Step 2", "Run billing analysis"],
-    ["Step 3", "Review claim readiness report"],
+    ["Step 1", "Add note"],
+    ["Step 2", "Analyze"],
+    ["Step 3", "Review"],
   ];
   return (
     <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-5 shadow-[0_12px_32px_rgba(54,42,31,0.04)]">
@@ -538,9 +534,9 @@ function InputPanel({
     <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a8a88]">Step 1</p>
-        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Synthetic Operative Note</h2>
+        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Note Input</h2>
         <p className="mt-2 text-sm leading-6 text-[#667774]">
-          Use an example note or paste your own synthetic note. The system will extract procedures, suggest CPT codes, check billing risks, and estimate reimbursement.
+          Use an example note or paste your own synthetic note. The system will identify the procedure, flag documentation risks, and suggest what a billing reviewer should check next.
         </p>
       </div>
 
@@ -593,19 +589,19 @@ function InputPanel({
 
 function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; loading: boolean; complete: boolean }) {
   const checks = [
-    "Extracting procedures",
-    "Mapping CPT candidates",
-    "Checking documentation and billing risks",
-    "Estimating reimbursement",
-    "Calculating claim readiness",
+    "Identifying procedures",
+    "Checking note structure",
+    "Reviewing documentation risks",
+    "Looking for billing-code support",
+    "Preparing reviewer next steps",
   ];
 
   if (!visible) {
     return (
       <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_12px_32px_rgba(54,42,31,0.05)]">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7a8a88]">Step 2</p>
-        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Billing analysis will run here</h2>
-        <p className="mt-2 text-sm leading-6 text-[#667774]">After you analyze a note, this panel will show the review workflow before the report appears.</p>
+        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Analysis will run here</h2>
+        <p className="mt-2 text-sm leading-6 text-[#667774]">After you analyze a note, this panel will show the review workflow before the summary appears.</p>
       </section>
     );
   }
@@ -615,8 +611,8 @@ function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#607a73]">Step 2</p>
-          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">{loading ? "Running billing analysis" : complete ? "Billing analysis completed" : "Billing analysis ready"}</h2>
-          <p className="mt-2 text-sm leading-6 text-[#667774]">Simulating a billing operations review workflow.</p>
+          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">{loading ? "Analyzing note" : complete ? "Analysis completed" : "Analysis ready"}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#667774]">Simulating how a billing reviewer checks procedure clarity and documentation risk.</p>
         </div>
         <StatusBadge status={loading ? "Running" : "Ready"} />
       </div>
@@ -723,29 +719,22 @@ function ImpactList({ title, items, empty, success = false }: { title: string; i
 }
 
 function ResultSummary({ report, loading }: { report: AnalysisReport | null; loading: boolean }) {
-  const topCode = report?.cpt_candidates[0];
   const reviewItems = (report?.audit_findings ?? []).filter((finding) => finding.severity !== "info");
   return (
     <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a8a88]">Step 3</p>
-          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Claim Readiness Report</h2>
+          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Review Summary</h2>
           <p className="mt-2 text-sm leading-6 text-[#667774]">
-            A score estimating how safe this note is to code and submit based on confidence, audit issues, and documentation completeness.
+            Status-first billing review guidance for a human reviewer. This is not a final coding decision.
           </p>
           {report ? (
-            <div className="mt-3 rounded-xl border border-[#d8e2dc] bg-[#f7fbf8] px-4 py-3">
-              <p className="text-sm font-semibold text-[#34464a]">Analysis mode: {analysisModeLabel(report.report.analysis_mode)}</p>
-              <p className="mt-1 text-xs leading-5 text-[#667774]">
-                Hybrid AI mode can better interpret varied synthetic note formats, but all results still require human review.
-              </p>
+            <div className="mt-3 rounded-xl border border-[#d8e2dc] bg-[#f7fbf8] px-4 py-3 text-xs leading-5 text-[#667774]">
+              <span className="font-semibold text-[#34464a]">Analysis: {analysisModeLabel(report.report.analysis_mode)}</span>
               {report.report.ai_provider && report.report.ai_model ? (
-                <p className="mt-1 text-xs text-[#71817d]">
-                  Provider: {providerLabel(report.report.ai_provider)} / {report.report.ai_model}
-                </p>
+                <span className="ml-2 text-[#71817d]">Provider: {providerLabel(report.report.ai_provider)}</span>
               ) : null}
-              {report.report.ai_assist_status ? <p className="mt-1 text-xs text-[#71817d]">{report.report.ai_assist_status}</p> : null}
             </div>
           ) : null}
         </div>
@@ -755,26 +744,23 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
       {report ? (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryMetric label="Claim Status" value={report.report.claim_readiness_status} />
-            <SummaryMetric label="Primary CPT" value={topCode?.code ?? "None"} detail={topCode?.description} />
-            <SummaryMetric label="Estimated Reimbursement" value={formatCurrency(report.total_estimated_reimbursement)} />
-            <SummaryMetric label="Main Issue" value={report.report.main_issue ?? mainIssue(reviewItems)} />
+            <SummaryMetric label="Review Status" value={report.report.claim_readiness_status} detail={`Score: ${report.report.claim_readiness_score}/100`} />
+            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} />
+            <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} />
+            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} />
           </div>
           <div className="mt-5 rounded-xl border border-[#d8e2dc] bg-[#f2f8f5] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#607a73]">Recommended action</p>
-            <p className="mt-2 text-base font-semibold text-[#1f2d33]">{report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status)}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#607a73]">Billing code</p>
+            <p className="mt-2 text-base font-semibold text-[#1f2d33]">{billingCodeLabel(report)}</p>
+            {!meaningfulCptCandidate(report) ? (
+              <p className="mt-2 text-sm leading-6 text-[#586b69]">
+                The system identified the procedure, but the local demo CPT library does not contain a confident billing-code match.
+              </p>
+            ) : null}
           </div>
           <div className="mt-4 rounded-xl bg-[#f7f4ef] p-4">
-            <p className="mb-3 text-sm font-semibold text-[#34464a]">Report narrative</p>
+            <p className="mb-3 text-sm font-semibold text-[#34464a]">Plain-English review</p>
             <p className="mb-3 text-sm leading-6 text-[#586b69]">{reportNarrative(report)}</p>
-            <p className="text-sm leading-6 text-[#586b69]">{report.report.claim_readiness_explanation}</p>
-            <ul className="mt-3 grid gap-2 text-sm text-[#34464a] sm:grid-cols-2">
-              {(report.report.claim_readiness_reasons ?? fallbackReasons(report)).map((reason) => (
-                <li key={reason} className="rounded-lg bg-[#fffdfa] px-3 py-2">
-                  {reason}
-                </li>
-              ))}
-            </ul>
           </div>
         </>
       ) : (
@@ -784,67 +770,47 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
   );
 }
 
-function KeyFindings({ report }: { report: AnalysisReport | null }) {
-  if (!report) {
-    return (
-      <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
-        <h2 className="text-lg font-semibold text-[#1f2d33]">Key Findings</h2>
-        <FriendlyEmpty title="No findings yet." text="Run an analysis to see procedures, suggested codes, risks, and reimbursement impact." />
-      </section>
-    );
-  }
-
-  const reviewItems = report.audit_findings.filter((finding) => finding.severity !== "info");
-  const topCode = report.cpt_candidates[0];
-  return (
-    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
-      <h2 className="text-lg font-semibold text-[#1f2d33]">Key Findings</h2>
-      <div className="mt-5 space-y-3">
-        <PlainFinding label="Procedure identified" value={report.extracted_procedures.map((item) => item.name).join(", ") || "None"} />
-        <PlainFinding label="Primary billing code" value={topCode ? `${topCode.code} - ${topCode.description}` : "No code identified"} />
-        <PlainFinding label="Main risk" value={report.report.main_issue ?? mainIssue(reviewItems)} />
-        <PlainFinding label="Recommended next step" value={report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status)} />
-      </div>
-    </section>
-  );
-}
-
 function CptCandidates({ report }: { report: AnalysisReport | null }) {
+  const meaningfulCandidates = (report?.cpt_candidates ?? []).filter(isMeaningfulCpt);
   return (
-    <SectionCard title="CPT Candidates" explainer="Possible billing codes identified from the operative note and supporting references.">
+    <SectionCard title="Billing Code Details" explainer="Shows CPT candidates only when the local demo library has enough support to make them useful for review.">
       {report ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-[#e4ddd2] text-xs uppercase tracking-[0.08em] text-[#7a8a88]">
-                <th className="py-3 pr-4">CPT</th>
-                <th className="py-3 pr-4">What it represents</th>
-                <th className="py-3 pr-4">Confidence</th>
-                <th className="py-3 pr-4">Modifier</th>
-                <th className="py-3 pr-4">Support</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.cpt_candidates.map((candidate) => (
-                <tr key={`${candidate.code}-${candidate.procedure_name}`} className="border-b border-[#f0e9df]">
-                  <td className="py-3 pr-4 font-mono font-semibold text-[#1f2d33]">{candidate.code}</td>
-                  <td className="py-3 pr-4">
-                    <p className="font-medium text-[#34464a]">{candidate.procedure_name}</p>
-                    <p className="mt-1 text-xs leading-5 text-[#71817d]">{candidate.description}</p>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <p className="font-medium text-[#34464a]">{Math.round(candidate.confidence * 100)}%</p>
-                    <p className="mt-1 text-xs text-[#71817d]">{cptConfidenceTier(candidate)}</p>
-                  </td>
-                  <td className="py-3 pr-4">{candidate.modifiers.length ? candidate.modifiers.join(", ") : "Needs clarification"}</td>
-                  <td className="py-3 pr-4">{candidate.supported_by_docs ? "Reference found" : "Needs support"}</td>
+        meaningfulCandidates.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#e4ddd2] text-xs uppercase tracking-[0.08em] text-[#7a8a88]">
+                  <th className="py-3 pr-4">Billing code</th>
+                  <th className="py-3 pr-4">What it represents</th>
+                  <th className="py-3 pr-4">Review tier</th>
+                  <th className="py-3 pr-4">Modifier</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {meaningfulCandidates.map((candidate) => (
+                  <tr key={`${candidate.code}-${candidate.procedure_name}`} className="border-b border-[#f0e9df]">
+                    <td className="py-3 pr-4 font-mono font-semibold text-[#1f2d33]">{candidate.code}</td>
+                    <td className="py-3 pr-4">
+                      <p className="font-medium text-[#34464a]">{candidate.procedure_name}</p>
+                      <p className="mt-1 text-xs leading-5 text-[#71817d]">{candidate.description}</p>
+                    </td>
+                    <td className="py-3 pr-4">{cptConfidenceTier(candidate)}</td>
+                    <td className="py-3 pr-4">{candidate.modifiers.length ? candidate.modifiers.join(", ") : "Needs clarification"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-[#ead8c0] bg-[#fbf2e6] p-4">
+            <p className="font-semibold text-[#7a5428]">Billing code: Review needed</p>
+            <p className="mt-2 text-sm leading-6 text-[#776653]">
+              The system identified the procedure, but the local demo CPT library does not contain a confident billing-code match.
+            </p>
+          </div>
+        )
       ) : (
-        <FriendlyEmpty title="CPT candidates will appear after analysis." text="The system will show likely billing codes and confidence levels." />
+        <FriendlyEmpty title="Billing code details will appear after analysis." text="Unsupported demo codes are hidden from the main summary so they do not look like recommendations." />
       )}
     </SectionCard>
   );
@@ -915,7 +881,7 @@ function SystemEvaluation({ evaluation, loading }: { evaluation: EvaluationSumma
 
 function AuditFindings({ report }: { report: AnalysisReport | null }) {
   return (
-    <SectionCard title="Audit Findings" explainer="Documentation or billing concerns that should be reviewed before submission.">
+    <SectionCard title="Billing Risks" explainer="Documentation or billing concerns that should be reviewed before submission.">
       {report ? (
         <div className="space-y-3">
           {report.audit_findings.map((finding, index) => (
@@ -935,7 +901,7 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
           ))}
         </div>
       ) : (
-        <FriendlyEmpty title="No audit findings yet." text="After analysis, risks such as missing modifiers or bundled-code conflicts will be listed here." />
+        <FriendlyEmpty title="No billing risks yet." text="After analysis, missing details, ambiguity, or billing-review concerns will be listed here." />
       )}
     </SectionCard>
   );
@@ -945,7 +911,7 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
   const findings = (report?.audit_findings ?? []).filter((finding) => finding.category !== "clean_claim");
   return (
     <SectionCard
-      title="How to improve this note"
+      title="Suggested Fixes"
       explainer="Practical documentation changes that would help a billing team review the note more confidently."
     >
       {report ? (
@@ -985,7 +951,7 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
 function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
   if (!report) {
     return (
-      <SectionCard title="AI Review Insights" explainer="Hybrid AI interpretation appears here only when the AI provider is used for a note that needs extra review.">
+      <SectionCard title="AI Interpretation" explainer="Hybrid AI interpretation appears here when the note needs help beyond the deterministic demo rules.">
         <FriendlyEmpty title="No AI review yet." text="Rules mode is enough for known examples and confident deterministic results." />
       </SectionCard>
     );
@@ -994,7 +960,7 @@ function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
   const usedAI = analysisModeLabel(report.report.analysis_mode) === "Hybrid AI mode";
   if (!usedAI) {
     return (
-      <SectionCard title="AI Review Insights" explainer="Hybrid AI interpretation appears here only when the AI provider is used for a note that needs extra review.">
+      <SectionCard title="AI Interpretation" explainer="Hybrid AI interpretation appears here when the note needs help beyond the deterministic demo rules.">
         <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
           <p className="font-semibold text-[#34464a]">Rules mode handled this review.</p>
           <p className="mt-2 text-sm leading-6 text-[#667774]">
@@ -1008,22 +974,21 @@ function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
   }
 
   return (
-    <SectionCard title="AI Review Insights" explainer="Draft AI interpretation used to clarify free text. Deterministic billing rules still decide final codes, audit warnings, and readiness.">
+    <SectionCard title="AI Interpretation" explainer="Draft interpretation of the operative note. Deterministic checks still control risks, supported codes, and review status.">
       <div className="grid gap-4 lg:grid-cols-2">
         <InsightBlock
-          title="Procedure interpretation"
+          title="Procedure family"
           body={report.report.ai_procedure_summary ?? "No procedure summary returned."}
           details={[
-            report.report.ai_likely_procedure_family ? `Family: ${report.report.ai_likely_procedure_family}` : null,
-            report.report.ai_likely_cpt_category ? `CPT category: ${report.report.ai_likely_cpt_category}` : null,
+            report.report.ai_likely_procedure_family ?? null,
+            report.structured_note?.detected_anatomy ? `Anatomy: ${report.structured_note.detected_anatomy}` : null,
+            report.structured_note?.detected_laterality ? `Laterality: ${report.structured_note.detected_laterality}` : "Laterality: not documented",
             report.report.ai_probable_operative_intent ? `Intent: ${report.report.ai_probable_operative_intent}` : null,
           ]}
         />
-        <InsightBlock title="Key supporting operative text" body="Phrases the AI layer used to interpret the procedure." details={report.report.ai_supporting_texts ?? []} />
-        <InsightBlock title="Why these CPTs were suggested" body="Draft CPT reasoning from the AI layer before deterministic billing validation." details={report.report.ai_cpt_rationales ?? []} />
-        <InsightBlock title="Billing review reasoning" body={report.report.ai_reasoning_summary ?? "No reasoning summary returned."} details={report.report.ai_confidence_reasoning ?? []} />
-        <InsightBlock title="Missing documentation details" body="Items the AI layer suggested clarifying before relying on the note." details={report.report.ai_documentation_gaps ?? []} />
-        <InsightBlock title="Suggested clarifications" body="Questions or documentation updates that could improve review confidence." details={report.report.ai_suggested_clarifications ?? []} />
+        <InsightBlock title="Procedures detected" body="Procedures or operative actions the AI layer pulled from the note." details={detectedProcedureItems(report)} />
+        <InsightBlock title="Documentation gaps" body="Details a billing reviewer may need before selecting or submitting a code." details={report.report.ai_documentation_gaps ?? []} />
+        <InsightBlock title="Suggested clarification questions" body="Questions to ask before relying on the note for billing review." details={report.report.ai_suggested_clarifications ?? []} />
       </div>
     </SectionCard>
   );
@@ -1156,7 +1121,7 @@ function RecentAnalyses({
   onLoad: (id: string) => void;
 }) {
   return (
-    <SectionCard title="Recent Analyses" explainer="Previously generated demo reports from this environment.">
+    <SectionCard title="Recent Reviews" explainer="Previously generated demo reviews from this environment.">
       {history.length ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {history.map((item) => (
@@ -1168,12 +1133,12 @@ function RecentAnalyses({
             >
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-semibold text-[#34464a]">{item.title}</p>
-                <span className="font-mono text-xs text-[#71817d]">{item.top_cpt_code ?? "No CPT"}</span>
+                <span className="text-xs text-[#71817d]">{historyCodeLabel(item.top_cpt_code)}</span>
               </div>
               <p className="mt-2 text-xs text-[#71817d]">{new Date(item.created_at).toLocaleString()}</p>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                 <StatusBadge status={item.claim_readiness_status} />
-                <span className="font-mono text-xs text-[#71817d]">{item.top_cpt_code ?? "No CPT"}</span>
+                <span className="text-xs text-[#71817d]">{historyCodeLabel(item.top_cpt_code)}</span>
               </div>
               <div className="mt-3 grid gap-1 text-xs text-[#667774]">
                 <span>Main issue: {item.main_issue ?? "No major issues"}</span>
@@ -1347,13 +1312,75 @@ function recommendedAction(status: string) {
   return "Run analysis to generate a recommended action.";
 }
 
+function isMeaningfulCpt(candidate: CPTCodeCandidate) {
+  return candidate.code !== "99999" && candidate.supported_by_docs && candidate.confidence >= 0.75;
+}
+
+function meaningfulCptCandidate(report: AnalysisReport) {
+  return report.cpt_candidates.find(isMeaningfulCpt) ?? null;
+}
+
+function billingCodeLabel(report: AnalysisReport) {
+  const candidate = meaningfulCptCandidate(report);
+  if (!candidate) return "CPT review needed";
+  return `Primary billing code: ${candidate.code}`;
+}
+
+function historyCodeLabel(code?: string | null) {
+  if (!code || code === "99999") return "Review needed";
+  return code;
+}
+
+function detectedProcedureLabel(report: AnalysisReport) {
+  if (report.report.ai_procedure_summary) return cleanProcedureSummary(report.report.ai_procedure_summary);
+  const names = report.extracted_procedures.map((procedure) => procedure.name).filter((name) => name !== "Unclassified operative procedure");
+  return names.length ? names.join(", ") : "Procedure identified, billing review needed";
+}
+
+function detectedProcedureItems(report: AnalysisReport) {
+  const aiSummary = report.report.ai_procedure_summary ? [cleanProcedureSummary(report.report.ai_procedure_summary)] : [];
+  const procedureNames = report.extracted_procedures
+    .map((procedure) => procedure.name)
+    .filter((name) => name !== "Unclassified operative procedure" && !aiSummary.some((summary) => summary.toLowerCase().includes(name.toLowerCase())));
+  const supportingText = report.report.ai_supporting_texts ?? [];
+  return [...aiSummary, ...procedureNames, ...supportingText].slice(0, 6);
+}
+
+function cleanProcedureSummary(value: string) {
+  return value.replace(/^AI identified:\s*/i, "").trim();
+}
+
+function nextStepLabel(report: AnalysisReport) {
+  const issue = reviewMainIssue(report);
+  if (!meaningfulCptCandidate(report)) {
+    if (report.report.ai_likely_procedure_family === "GI surgery") {
+      return "Confirm the correct bowel resection CPT and documentation details.";
+    }
+    return "Confirm the correct billing code and documentation details.";
+  }
+  if (issue === "Missing laterality") return "Clarify left or right side before billing review.";
+  if (issue === "Bundling conflict") return "Confirm which service should be billed before submission.";
+  if (issue === "Ambiguous documentation") return "Clarify the procedure intent and operative extent.";
+  return report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status);
+}
+
 function mainIssue(findings: AuditFinding[]) {
   const categories = findings.map((finding) => finding.category);
   if (categories.includes("bundling_conflict")) return "Bundling conflict";
   if (categories.includes("missing_laterality")) return "Missing laterality";
   if (categories.includes("low_confidence")) return "Ambiguous documentation";
-  if (categories.includes("unsupported_code")) return "Unsupported procedure";
+  if (categories.includes("unsupported_code")) return "Billing code review needed";
   return "No major issues";
+}
+
+function reviewIssueLabel(issue: string) {
+  if (issue === "Unsupported procedure") return "Billing code review needed";
+  return issue;
+}
+
+function reviewMainIssue(report: AnalysisReport) {
+  if (!meaningfulCptCandidate(report)) return "Billing code review needed";
+  return reviewIssueLabel(report.report.main_issue ?? mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info")));
 }
 
 function fallbackReasons(report: AnalysisReport) {
@@ -1366,25 +1393,30 @@ function fallbackReasons(report: AnalysisReport) {
 }
 
 function reportNarrative(report: AnalysisReport) {
-  const issue = report.report.main_issue ?? mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info"));
-  const action = report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status);
+  const issue = reviewMainIssue(report);
+  const action = nextStepLabel(report);
+  const procedure = detectedProcedureLabel(report).toLowerCase();
+  const family = report.report.ai_likely_procedure_family;
+  if (!meaningfulCptCandidate(report)) {
+    return `The note describes ${procedure}. ${family ? `The app identified this as a ${family} case, but ` : "However, "}the local demo code library does not contain enough billing rules to assign a confident CPT. A human coding reviewer should confirm the operative extent and appropriate billing code.`;
+  }
   if (report.report.claim_readiness_status === "Ready") {
-    return `The note is currently marked as Ready because the primary procedure is documented clearly and the local demo audit checks did not find major billing risks. Recommended next step: ${action}`;
+    return `The note is marked Ready for standard billing review because the procedure is documented clearly and the demo checks did not find major billing risks. Recommended next step: ${action}`;
   }
   if (issue === "Missing laterality") {
-    return `The note is currently marked as ${report.report.claim_readiness_status} because laterality was not clearly documented. Clarifying whether the procedure was performed on the left or right side would likely improve coding confidence and reduce modifier ambiguity.`;
+    return `The note needs review because laterality was not clearly documented. Clarifying whether the procedure was performed on the left or right side would reduce modifier ambiguity.`;
   }
   if (issue === "Bundling conflict") {
-    return `The note is currently marked as High Risk because the documentation produced a possible bundled-code conflict. Resolving which service should be billed would reduce denial and compliance risk.`;
+    return `The note is high risk because the documentation produced a possible bundled-code conflict. A human reviewer should decide which service should be billed.`;
   }
-  return `The note is currently marked as ${report.report.claim_readiness_status} because the billing review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
+  return `The note is marked ${report.report.claim_readiness_status} because the billing review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
 }
 
 function findingTitle(category: string) {
   if (category === "bundling_conflict") return "Bundling conflict detected";
   if (category === "low_confidence") return "Low confidence coding";
   if (category === "missing_laterality") return "Missing laterality";
-  if (category === "unsupported_code") return "Unsupported procedure";
+  if (category === "unsupported_code") return "Billing code review needed";
   if (category === "clean_claim") return "No major billing risks found";
   return readableCategory(category);
 }
