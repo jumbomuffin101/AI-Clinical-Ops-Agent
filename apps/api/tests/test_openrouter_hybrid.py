@@ -200,6 +200,66 @@ def test_malformed_groq_output_falls_back(monkeypatch):
     assert status == "AI enhancement temporarily unavailable. Core billing review completed successfully."
 
 
+def test_groq_string_detected_procedures_get_normalized(monkeypatch):
+    payload = _valid_ai_payload()
+    payload["detected_procedures"] = ["diagnostic colonoscopy"]
+    service = _groq_service(monkeypatch, payload)
+
+    ai_analysis, status = service._run_ai_analysis("Custom vague colon procedure note.")
+
+    assert ai_analysis is not None
+    assert status == "Groq enhancement validated."
+    assert ai_analysis.detected_procedures[0].name == "diagnostic colonoscopy"
+    assert ai_analysis.detected_procedures[0].confidence == 0.45
+
+
+def test_groq_string_audit_concerns_get_normalized(monkeypatch):
+    payload = _valid_ai_payload()
+    payload["audit_concerns"] = ["Missing procedure detail"]
+    service = _groq_service(monkeypatch, payload)
+
+    ai_analysis, _ = service._run_ai_analysis("Custom vague colon procedure note.")
+
+    assert ai_analysis is not None
+    assert ai_analysis.audit_concerns[0].title == "Missing procedure detail"
+    assert ai_analysis.audit_concerns[0].severity == "medium"
+
+
+def test_groq_confidence_reasoning_string_gets_wrapped(monkeypatch):
+    payload = _valid_ai_payload()
+    payload["confidence_reasoning"] = "Procedure is partially supported."
+    service = _groq_service(monkeypatch, payload)
+
+    ai_analysis, _ = service._run_ai_analysis("Custom vague colon procedure note.")
+
+    assert ai_analysis is not None
+    assert ai_analysis.confidence_reasoning == ["Procedure is partially supported."]
+
+
+def test_groq_string_cpt_candidates_get_normalized(monkeypatch):
+    payload = _valid_ai_payload()
+    payload["cpt_candidates"] = ["45378"]
+    payload["likely_cpt_candidates"] = []
+    service = _groq_service(monkeypatch, payload)
+
+    ai_analysis, _ = service._run_ai_analysis("Custom vague colon procedure note.")
+
+    assert ai_analysis is not None
+    assert ai_analysis.cpt_candidates[0].code == "45378"
+    assert ai_analysis.cpt_candidates[0].confidence == 0.35
+    assert ai_analysis.cpt_candidates[0].needs_human_review is True
+
+
+def test_non_json_like_groq_output_falls_back(monkeypatch):
+    service = _groq_service(monkeypatch)
+    service.llm_provider = FakeProvider("not a dict")
+
+    ai_analysis, status = service._run_ai_analysis("Custom vague colon procedure note.")
+
+    assert ai_analysis is None
+    assert status == "AI enhancement temporarily unavailable. Core billing review completed successfully."
+
+
 def test_groq_unavailable_falls_back(monkeypatch):
     service = _groq_service(monkeypatch)
     service.llm_provider = FailingProvider()

@@ -49,19 +49,22 @@ class StructuredOperativeNote(BaseModel):
 
 class AIProcedure(BaseModel):
     name: str
+    procedure_family: str | None = None
     anatomy: str | None = None
     laterality: str | None = None
+    supporting_text: str = ""
     evidence: str = ""
     confidence: float = Field(ge=0, le=1)
 
 
 class AICPTCandidate(BaseModel):
-    procedure_name: str
+    procedure_name: str = ""
     code: str | None = None
     description: str | None = None
     modifiers: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0, le=1)
     rationale: str = ""
+    needs_human_review: bool = True
 
 
 class AIAuditConcern(BaseModel):
@@ -77,6 +80,7 @@ class AIStructuredOperativeNote(BaseModel):
     anatomy: str | None = None
     laterality: str | None = None
     likely_cpt_candidates: list[AICPTCandidate] = Field(default_factory=list)
+    cpt_candidates: list[AICPTCandidate] = Field(default_factory=list)
     documentation_gaps: list[str] = Field(default_factory=list)
     audit_concerns: list[AIAuditConcern] = Field(default_factory=list)
     confidence_reasoning: list[str] = Field(default_factory=list)

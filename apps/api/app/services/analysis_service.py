@@ -203,7 +203,19 @@ class AnalysisService:
         try:
             log_event(logger, logging.INFO, "llm.analysis.attempted", provider=selected_provider, model=self._provider_model(selected_provider))
             raw_output = self.llm_provider.complete_json(self._ai_prompt(note_text))
-            validated = AIStructuredOperativeNote.model_validate(raw_output)
+            normalized_output, normalization_applied = self._normalize_ai_output(raw_output)
+            log_event(
+                logger,
+                logging.INFO,
+                "llm.response.shape",
+                provider=selected_provider,
+                keys=sorted(raw_output.keys()) if isinstance(raw_output, dict) else [],
+                detected_procedures_type=type(raw_output.get("detected_procedures")).__name__ if isinstance(raw_output, dict) else type(raw_output).__name__,
+                audit_concerns_type=type(raw_output.get("audit_concerns")).__name__ if isinstance(raw_output, dict) else type(raw_output).__name__,
+                confidence_reasoning_type=type(raw_output.get("confidence_reasoning")).__name__ if isinstance(raw_output, dict) else type(raw_output).__name__,
+            )
+            log_event(logger, logging.INFO, "llm.response.normalized", provider=selected_provider, normalization_applied=normalization_applied)
+            validated = AIStructuredOperativeNote.model_validate(normalized_output)
             AI_RESPONSE_CACHE[cache_key] = (time.time() + AI_CACHE_TTL_SECONDS, validated)
             log_event(logger, logging.INFO, "llm.validation.success", provider=selected_provider, procedure_count=len(validated.detected_procedures))
             log_event(logger, logging.INFO, "llm.analysis.succeeded", provider=selected_provider)
@@ -276,18 +288,156 @@ class AnalysisService:
     @staticmethod
     def _ai_prompt(note_text: str) -> str:
         return (
-            "Analyze this synthetic operative note for billing review assistance. "
-            "Do not assume this is real patient data. Return JSON only with exactly these top-level keys: "
-            "parsed_note_sections, detected_procedures, anatomy, laterality, likely_cpt_candidates, "
-            "documentation_gaps, audit_concerns, confidence_reasoning, unsupported_or_unclear_procedure, "
-            "procedure_summary, reasoning_summary, suggested_clarifications, likely_procedure_family, "
-            "likely_cpt_category, probable_operative_intent. "
-            "Use null when anatomy or laterality is unclear. Do not invent CPT codes when documentation is vague. "
-            "Mark unsupported_or_unclear_procedure true if the procedure cannot be confidently mapped. "
-            "Focus on interpreting free text, missing structure, documentation gaps, and clarification requests. "
-            "Do not present billing advice as authoritative.\n\n"
+            "Analyze this synthetic operative note for billing review assistance. Return JSON only. "
+            "Use this exact shape and no markdown:\n"
+            "{\n"
+            '  "parsed_note_sections": {"procedure": "", "indication": "", "findings": "", "technique": "", "complications": ""},\n'
+            '  "detected_procedures": [{"name": "", "procedure_family": "", "anatomy": "", "laterality": null, "confidence": 0.0, "supporting_text": ""}],\n'
+            '  "cpt_candidates": [{"code": "", "description": "", "confidence": 0.0, "rationale": "", "needs_human_review": true}],\n'
+            '  "documentation_gaps": [""],\n'
+            '  "audit_concerns": [{"title": "", "severity": "low|medium|high", "explanation": "", "suggested_action": ""}],\n'
+            '  "confidence_reasoning": [""],\n'
+            '  "unsupported_or_unclear_procedure": false,\n'
+            '  "procedure_summary": "",\n'
+            '  "reasoning_summary": "",\n'
+            '  "suggested_clarifications": [""],\n'
+            '  "likely_procedure_family": "",\n'
+            '  "likely_cpt_category": "",\n'
+            '  "probable_operative_intent": ""\n'
+            "}\n"
+            "Use null for unknown laterality. Do not invent high-confidence CPT codes when documentation is vague. "
+            "Treat output as draft review support, not authoritative billing advice.\n\n"
             f"OPERATIVE NOTE:\n{note_text}"
         )
+
+    @staticmethod
+    def _normalize_ai_output(raw_output: object) -> tuple[dict, bool]:
+        if not isinstance(raw_output, dict) or not raw_output:
+            raise ValueError("AI response was empty or not a JSON object.")
+
+        normalized = dict(raw_output)
+        applied = False
+        defaults = {
+            "parsed_note_sections": {},
+            "detected_procedures": [],
+            "cpt_candidates": [],
+            "likely_cpt_candidates": [],
+            "documentation_gaps": [],
+            "audit_concerns": [],
+            "confidence_reasoning": [],
+            "unsupported_or_unclear_procedure": False,
+            "suggested_clarifications": [],
+        }
+        for key, value in defaults.items():
+            if key not in normalized or normalized[key] is None:
+                normalized[key] = value
+                applied = True
+
+        for key in ["confidence_reasoning", "documentation_gaps", "suggested_clarifications"]:
+            if isinstance(normalized.get(key), str):
+                normalized[key] = [normalized[key]]
+                applied = True
+
+        procedures = normalized.get("detected_procedures")
+        if isinstance(procedures, str):
+            procedures = [procedures]
+            applied = True
+        if isinstance(procedures, list):
+            normalized_procedures = []
+            for item in procedures:
+                if isinstance(item, str):
+                    normalized_procedures.append(
+                        {
+                            "name": item,
+                            "procedure_family": None,
+                            "anatomy": None,
+                            "laterality": None,
+                            "confidence": 0.45,
+                            "supporting_text": item,
+                            "evidence": item,
+                        }
+                    )
+                    applied = True
+                elif isinstance(item, dict):
+                    procedure = dict(item)
+                    procedure.setdefault("name", "Unclear procedure")
+                    procedure.setdefault("procedure_family", None)
+                    procedure.setdefault("anatomy", None)
+                    procedure.setdefault("laterality", None)
+                    procedure.setdefault("confidence", 0.5)
+                    procedure.setdefault("supporting_text", procedure.get("evidence", ""))
+                    procedure.setdefault("evidence", procedure.get("supporting_text", ""))
+                    normalized_procedures.append(procedure)
+                else:
+                    applied = True
+            normalized["detected_procedures"] = normalized_procedures
+
+        concerns = normalized.get("audit_concerns")
+        if isinstance(concerns, str):
+            concerns = [concerns]
+            applied = True
+        if isinstance(concerns, list):
+            normalized_concerns = []
+            for item in concerns:
+                if isinstance(item, str):
+                    normalized_concerns.append(
+                        {
+                            "title": item,
+                            "severity": "medium",
+                            "explanation": item,
+                            "suggested_action": "Review this concern before final billing.",
+                        }
+                    )
+                    applied = True
+                elif isinstance(item, dict):
+                    concern = dict(item)
+                    concern.setdefault("title", "AI audit concern")
+                    concern.setdefault("severity", "medium")
+                    concern.setdefault("explanation", "")
+                    concern.setdefault("suggested_action", "Review before final billing.")
+                    normalized_concerns.append(concern)
+                else:
+                    applied = True
+            normalized["audit_concerns"] = normalized_concerns
+
+        for candidate_key in ["cpt_candidates", "likely_cpt_candidates"]:
+            candidates = normalized.get(candidate_key)
+            if isinstance(candidates, str):
+                candidates = [candidates]
+                applied = True
+            if isinstance(candidates, list):
+                normalized_candidates = []
+                for item in candidates:
+                    if isinstance(item, str):
+                        normalized_candidates.append(
+                            {
+                                "procedure_name": "",
+                                "code": item,
+                                "description": "",
+                                "confidence": 0.35,
+                                "rationale": "AI returned an unstructured CPT candidate; human review required.",
+                                "needs_human_review": True,
+                            }
+                        )
+                        applied = True
+                    elif isinstance(item, dict):
+                        candidate = dict(item)
+                        candidate.setdefault("procedure_name", "")
+                        candidate.setdefault("code", None)
+                        candidate.setdefault("description", "")
+                        candidate.setdefault("confidence", 0.5)
+                        candidate.setdefault("rationale", "")
+                        candidate.setdefault("needs_human_review", True)
+                        normalized_candidates.append(candidate)
+                    else:
+                        applied = True
+                normalized[candidate_key] = normalized_candidates
+
+        if not normalized.get("likely_cpt_candidates") and normalized.get("cpt_candidates"):
+            normalized["likely_cpt_candidates"] = normalized["cpt_candidates"]
+            applied = True
+
+        return normalized, applied
 
     def _provider_enabled(self, provider: str) -> bool:
         if provider == "groq":
