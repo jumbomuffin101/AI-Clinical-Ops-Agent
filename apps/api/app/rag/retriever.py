@@ -11,6 +11,8 @@ class KeywordRetriever:
         "endoscopy_guidelines.md": "endoscopy",
         "angiography_guidelines.md": "angiography",
         "hernia_repair_guidelines.md": "hernia",
+        "gi_surgery_guidelines.md": "gi_surgery",
+        "orthopedic_revision_guidelines.md": "orthopedics",
     }
 
     def __init__(self, docs_path: Path):

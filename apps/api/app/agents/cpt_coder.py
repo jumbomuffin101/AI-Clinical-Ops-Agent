@@ -5,6 +5,10 @@ from app.rag.retriever import KeywordRetriever
 class CPTCoder:
     CODEBOOK = {
         "AV fistula creation": ("36821", "Direct arteriovenous anastomosis for dialysis access"),
+        "Exploratory laparotomy": ("49000", "Exploratory laparotomy, exploratory celiotomy with or without biopsy"),
+        "Small bowel resection": ("44120", "Enterectomy, resection of small intestine; single resection and anastomosis"),
+        "Bowel resection with anastomosis": ("44120", "Enterectomy, resection of small intestine; single resection and anastomosis"),
+        "Partial colectomy": ("44140", "Colectomy, partial; with anastomosis"),
         "Laparoscopic cholecystectomy": ("47562", "Laparoscopy, surgical; cholecystectomy"),
         "Laparoscopic cholecystectomy with cholangiography": ("47563", "Laparoscopy, surgical; cholecystectomy with cholangiography"),
         "Femoral endarterectomy": ("35371", "Thromboendarterectomy, including patch graft, common femoral"),
@@ -14,9 +18,16 @@ class CPTCoder:
         "Open inguinal hernia repair": ("49505", "Repair initial inguinal hernia, age 5 years or older; reducible"),
         "Diagnostic colonoscopy": ("45378", "Diagnostic colonoscopy, including specimen collection when performed"),
         "Lower extremity angiogram": ("75710", "Angiography, extremity, unilateral, radiological supervision and interpretation"),
+        "Revision total knee arthroplasty": ("27487", "Revision of total knee arthroplasty, femoral and entire tibial component"),
+        "Revision total hip arthroplasty": ("27134", "Revision of total hip arthroplasty, both components"),
+        "Lower extremity vascular bypass": ("35556", "Femoral-popliteal bypass with vein"),
     }
     PROCEDURE_FAMILIES = {
         "AV fistula creation": "vascular_access",
+        "Exploratory laparotomy": "gi_surgery",
+        "Small bowel resection": "gi_surgery",
+        "Bowel resection with anastomosis": "gi_surgery",
+        "Partial colectomy": "gi_surgery",
         "Femoral endarterectomy": "vascular_surgery",
         "Carotid endarterectomy": "vascular_surgery",
         "Laparoscopic cholecystectomy": "general_surgery",
@@ -26,6 +37,9 @@ class CPTCoder:
         "Open inguinal hernia repair": "hernia",
         "Diagnostic colonoscopy": "endoscopy",
         "Lower extremity angiogram": "angiography",
+        "Revision total knee arthroplasty": "orthopedics",
+        "Revision total hip arthroplasty": "orthopedics",
+        "Lower extremity vascular bypass": "vascular_surgery",
     }
 
     def __init__(self, retriever: KeywordRetriever):

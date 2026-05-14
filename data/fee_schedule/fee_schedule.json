@@ -48,5 +48,35 @@
     "allowed_amount": 760.0,
     "currency": "USD",
     "source": "Synthetic 2026 hospital outpatient fee schedule"
+  },
+  "49000": {
+    "allowed_amount": 2105.45,
+    "currency": "USD",
+    "source": "Synthetic 2026 hospital outpatient fee schedule"
+  },
+  "44120": {
+    "allowed_amount": 4875.3,
+    "currency": "USD",
+    "source": "Synthetic 2026 inpatient surgical fee schedule"
+  },
+  "44140": {
+    "allowed_amount": 5360.8,
+    "currency": "USD",
+    "source": "Synthetic 2026 inpatient surgical fee schedule"
+  },
+  "27487": {
+    "allowed_amount": 6825.0,
+    "currency": "USD",
+    "source": "Synthetic 2026 hospital outpatient fee schedule"
+  },
+  "27134": {
+    "allowed_amount": 7140.5,
+    "currency": "USD",
+    "source": "Synthetic 2026 hospital outpatient fee schedule"
+  },
+  "35556": {
+    "allowed_amount": 6125.75,
+    "currency": "USD",
+    "source": "Synthetic 2026 hospital outpatient fee schedule"
   }
 }

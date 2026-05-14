@@ -326,6 +326,12 @@ def test_exact_groq_loose_shape_produces_hybrid_mode_and_summary(monkeypatch, tm
     assert report.analysis_mode == "Hybrid AI mode"
     assert report.report["analysis_mode"] == "Hybrid AI mode"
     assert report.report["ai_procedure_summary"] == "AI identified: Exploratory laparotomy, Small bowel resection, Stapled primary anastomosis"
+    assert report.report["ai_likely_procedure_family"] == "GI surgery"
+    assert any(candidate.code != "99999" for candidate in report.cpt_candidates)
+    assert any(candidate.code == "44120" for candidate in report.cpt_candidates)
+    assert report.report["claim_readiness_status"] in {"Needs Review", "High Risk"}
+    assert report.report["ai_supporting_texts"]
+    assert report.report["ai_cpt_rationales"]
 
 
 def test_groq_unavailable_falls_back(monkeypatch):

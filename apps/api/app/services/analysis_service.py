@@ -18,6 +18,7 @@ from app.logging_utils import log_event
 from app.models import db as models
 from app.models.schemas import (
     AIAuditConcern,
+    AIProcedure,
     AIStructuredOperativeNote,
     AnalysisListItem,
     AnalysisReport,
@@ -81,9 +82,11 @@ class AnalysisService:
         report["ai_documentation_gaps"] = ai_analysis.documentation_gaps if ai_analysis else []
         report["ai_suggested_clarifications"] = ai_analysis.suggested_clarifications if ai_analysis else []
         report["ai_confidence_reasoning"] = ai_analysis.confidence_reasoning if ai_analysis else []
-        report["ai_likely_procedure_family"] = ai_analysis.likely_procedure_family if ai_analysis else None
+        report["ai_likely_procedure_family"] = self._infer_ai_procedure_family(ai_analysis) if ai_analysis else None
         report["ai_likely_cpt_category"] = ai_analysis.likely_cpt_category if ai_analysis else None
         report["ai_probable_operative_intent"] = ai_analysis.probable_operative_intent if ai_analysis else None
+        report["ai_supporting_texts"] = self._ai_supporting_texts(ai_analysis)
+        report["ai_cpt_rationales"] = self._ai_cpt_rationales(ai_analysis) or self._validated_cpt_rationales(ai_analysis, candidates)
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -263,7 +266,7 @@ class AnalysisService:
         if self._rules_need_ai_help(candidates, findings):
             return self._run_ai_analysis(note_text)
         log_event(logger, logging.INFO, "llm.fallback.activated", reason="rules_confident_custom_note")
-        return None, "Rules handled the note confidently; OpenRouter not needed."
+        return None, "Rules handled the note confidently; AI provider not needed."
 
     @staticmethod
     def _rules_need_ai_help(candidates: list, findings: list[AuditFinding]) -> bool:
@@ -315,6 +318,8 @@ class AnalysisService:
             '  "probable_operative_intent": ""\n'
             "}\n"
             "Use null for unknown laterality. Do not invent high-confidence CPT codes when documentation is vague. "
+            "Map bowel resection, colectomy, enterotomy, anastomosis, and laparotomy into the GI surgery family. "
+            "For unsupported or complex procedures, describe likely operative intent and clarification needs instead of forcing billing certainty. "
             "Treat output as draft review support, not authoritative billing advice.\n\n"
             f"OPERATIVE NOTE:\n{note_text}"
         )
@@ -558,27 +563,167 @@ class AnalysisService:
         ai_analysis: AIStructuredOperativeNote | None,
         structured_note: StructuredOperativeNote,
     ) -> list[ExtractedProcedure]:
-        if not ai_analysis or ai_analysis.unsupported_or_unclear_procedure:
+        if not ai_analysis:
             return procedures
         if not procedures or procedures[0].name != "Unclassified operative procedure":
             return procedures
 
-        known_names = set(CPTCoder.CODEBOOK)
-        candidates = [procedure for procedure in ai_analysis.detected_procedures if procedure.name in known_names and procedure.confidence >= 0.65]
-        if not candidates:
+        mapped = [
+            AnalysisService._ai_procedure_to_extracted(procedure, ai_analysis, structured_note)
+            for procedure in ai_analysis.detected_procedures
+        ]
+        candidates = [procedure for procedure in mapped if procedure is not None]
+        if not candidates and ai_analysis.unsupported_or_unclear_procedure:
             return procedures
 
-        procedure = max(candidates, key=lambda item: item.confidence)
-        return [
-            ExtractedProcedure(
-                name=procedure.name,
-                body_site=procedure.anatomy or structured_note.detected_anatomy,
-                approach=None,
-                laterality=procedure.laterality or structured_note.detected_laterality,
-                evidence=procedure.evidence,
-                confidence=min(procedure.confidence, 0.82),
-            )
-        ]
+        return candidates or procedures
+
+    @staticmethod
+    def _ai_procedure_to_extracted(
+        procedure: AIProcedure,
+        ai_analysis: AIStructuredOperativeNote,
+        structured_note: StructuredOperativeNote,
+    ) -> ExtractedProcedure | None:
+        mapped_name = AnalysisService._map_ai_procedure_name(procedure, ai_analysis)
+        if not mapped_name:
+            return None
+        confidence = AnalysisService._ai_cpt_mapping_confidence(procedure, mapped_name)
+        evidence = procedure.supporting_text or procedure.evidence or f"AI identified {procedure.name} for human coding review."
+        return ExtractedProcedure(
+            name=mapped_name,
+            body_site=procedure.anatomy or structured_note.detected_anatomy or AnalysisService._default_body_site(mapped_name),
+            approach=AnalysisService._default_approach(mapped_name),
+            laterality=procedure.laterality or structured_note.detected_laterality,
+            evidence=evidence,
+            confidence=confidence,
+        )
+
+    @staticmethod
+    def _map_ai_procedure_name(procedure: AIProcedure, ai_analysis: AIStructuredOperativeNote) -> str | None:
+        text = " ".join(
+            item
+            for item in [
+                procedure.name,
+                procedure.procedure_family or "",
+                procedure.anatomy or "",
+                procedure.supporting_text,
+                procedure.evidence,
+                ai_analysis.likely_procedure_family or "",
+                ai_analysis.likely_cpt_category or "",
+                ai_analysis.probable_operative_intent or "",
+            ]
+            if item
+        ).lower()
+        if procedure.name in CPTCoder.CODEBOOK:
+            return procedure.name
+        if any(term in text for term in ["small bowel resection", "enterectomy", "small intestine resection"]):
+            return "Small bowel resection"
+        if "bowel resection" in text and "anastom" in text:
+            return "Bowel resection with anastomosis"
+        if any(term in text for term in ["colectomy", "colon resection", "colonic resection"]):
+            return "Partial colectomy"
+        if any(term in text for term in ["exploratory laparotomy", "laparotomy", "celiotomy"]):
+            return "Exploratory laparotomy"
+        if "appendectomy" in text or "appendix" in text:
+            return "Laparoscopic appendectomy" if "laparoscopic" in text else "Appendectomy"
+        if "cholecystectomy" in text or "gallbladder" in text:
+            return "Laparoscopic cholecystectomy with cholangiography" if "cholangiogram" in text or "cholangiography" in text else "Laparoscopic cholecystectomy"
+        if "inguinal hernia" in text:
+            return "Open inguinal hernia repair"
+        if any(term in text for term in ["revision total knee", "knee arthroplasty revision", "revision knee arthroplasty"]):
+            return "Revision total knee arthroplasty"
+        if any(term in text for term in ["revision total hip", "hip arthroplasty revision", "revision hip arthroplasty"]):
+            return "Revision total hip arthroplasty"
+        if any(term in text for term in ["vascular bypass", "femoral popliteal bypass", "fem-pop bypass", "lower extremity bypass"]):
+            return "Lower extremity vascular bypass"
+        return None
+
+    @staticmethod
+    def _ai_cpt_mapping_confidence(procedure: AIProcedure, mapped_name: str) -> float:
+        raw_name = procedure.name.strip().lower()
+        exact = raw_name == mapped_name.lower()
+        if exact and procedure.confidence >= 0.85:
+            return min(procedure.confidence, 0.88)
+        if mapped_name in {"Small bowel resection", "Bowel resection with anastomosis", "Partial colectomy"}:
+            return min(max(procedure.confidence, 0.72), 0.78)
+        if mapped_name == "Exploratory laparotomy":
+            return min(max(procedure.confidence, 0.68), 0.76)
+        return min(max(procedure.confidence, 0.7), 0.82)
+
+    @staticmethod
+    def _default_body_site(mapped_name: str) -> str | None:
+        if mapped_name in {"Exploratory laparotomy", "Small bowel resection", "Bowel resection with anastomosis", "Partial colectomy"}:
+            return "abdomen"
+        if mapped_name in {"Revision total knee arthroplasty", "Revision total hip arthroplasty"}:
+            return "joint"
+        if mapped_name == "Lower extremity vascular bypass":
+            return "lower extremity arteries"
+        return None
+
+    @staticmethod
+    def _default_approach(mapped_name: str) -> str | None:
+        if mapped_name in {"Exploratory laparotomy", "Small bowel resection", "Bowel resection with anastomosis", "Partial colectomy"}:
+            return "open"
+        if mapped_name == "Laparoscopic cholecystectomy":
+            return "laparoscopic"
+        return None
+
+    @staticmethod
+    def _ai_supporting_texts(ai_analysis: AIStructuredOperativeNote | None) -> list[str]:
+        if not ai_analysis:
+            return []
+        texts: list[str] = []
+        for procedure in ai_analysis.detected_procedures:
+            text = procedure.supporting_text or procedure.evidence
+            if text and text not in texts:
+                texts.append(text)
+        return texts[:5]
+
+    @staticmethod
+    def _ai_cpt_rationales(ai_analysis: AIStructuredOperativeNote | None) -> list[str]:
+        if not ai_analysis:
+            return []
+        rationales: list[str] = []
+        for candidate in [*ai_analysis.likely_cpt_candidates, *ai_analysis.cpt_candidates]:
+            label = candidate.code or candidate.description or candidate.procedure_name or "Uncoded CPT suggestion"
+            rationale = candidate.rationale or "AI suggested this as a draft candidate for human coding review."
+            item = f"{label}: {rationale}"
+            if item not in rationales:
+                rationales.append(item)
+        return rationales[:5]
+
+    @staticmethod
+    def _validated_cpt_rationales(ai_analysis: AIStructuredOperativeNote | None, candidates: list) -> list[str]:
+        if not ai_analysis:
+            return []
+        rationales: list[str] = []
+        for candidate in candidates:
+            if candidate.code == "99999":
+                continue
+            rationales.append(f"{candidate.code}: {candidate.rationale}")
+        return rationales[:5]
+
+    @staticmethod
+    def _infer_ai_procedure_family(ai_analysis: AIStructuredOperativeNote | None) -> str | None:
+        if not ai_analysis:
+            return None
+        text = " ".join(
+            [
+                ai_analysis.likely_procedure_family or "",
+                ai_analysis.likely_cpt_category or "",
+                ai_analysis.probable_operative_intent or "",
+                ai_analysis.procedure_summary or "",
+                " ".join(procedure.name for procedure in ai_analysis.detected_procedures),
+                " ".join((procedure.supporting_text or procedure.evidence) for procedure in ai_analysis.detected_procedures),
+            ]
+        ).lower()
+        if any(term in text for term in ["bowel resection", "small bowel", "colectomy", "enterotomy", "anastomosis", "laparotomy", "enterectomy"]):
+            return "GI surgery"
+        if any(term in text for term in ["vascular bypass", "femoral bypass", "popliteal bypass"]):
+            return "vascular surgery"
+        if any(term in text for term in ["revision total knee", "revision total hip", "arthroplasty revision"]):
+            return "orthopedic revision"
+        return ai_analysis.likely_procedure_family
 
     @staticmethod
     def _ai_audit_findings(ai_analysis: AIStructuredOperativeNote | None) -> list[AuditFinding]:

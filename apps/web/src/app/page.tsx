@@ -88,6 +88,8 @@ type AnalysisReport = {
     ai_likely_procedure_family?: string | null;
     ai_likely_cpt_category?: string | null;
     ai_probable_operative_intent?: string | null;
+    ai_supporting_texts?: string[];
+    ai_cpt_rationales?: string[];
     audit_issue_count: number;
     procedure_count: number;
     total_estimated_reimbursement: number;
@@ -830,7 +832,10 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
                     <p className="font-medium text-[#34464a]">{candidate.procedure_name}</p>
                     <p className="mt-1 text-xs leading-5 text-[#71817d]">{candidate.description}</p>
                   </td>
-                  <td className="py-3 pr-4">{Math.round(candidate.confidence * 100)}%</td>
+                  <td className="py-3 pr-4">
+                    <p className="font-medium text-[#34464a]">{Math.round(candidate.confidence * 100)}%</p>
+                    <p className="mt-1 text-xs text-[#71817d]">{cptConfidenceTier(candidate)}</p>
+                  </td>
                   <td className="py-3 pr-4">{candidate.modifiers.length ? candidate.modifiers.join(", ") : "Needs clarification"}</td>
                   <td className="py-3 pr-4">{candidate.supported_by_docs ? "Reference found" : "Needs support"}</td>
                 </tr>
@@ -1014,6 +1019,8 @@ function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
             report.report.ai_probable_operative_intent ? `Intent: ${report.report.ai_probable_operative_intent}` : null,
           ]}
         />
+        <InsightBlock title="Key supporting operative text" body="Phrases the AI layer used to interpret the procedure." details={report.report.ai_supporting_texts ?? []} />
+        <InsightBlock title="Why these CPTs were suggested" body="Draft CPT reasoning from the AI layer before deterministic billing validation." details={report.report.ai_cpt_rationales ?? []} />
         <InsightBlock title="Billing review reasoning" body={report.report.ai_reasoning_summary ?? "No reasoning summary returned."} details={report.report.ai_confidence_reasoning ?? []} />
         <InsightBlock title="Missing documentation details" body="Items the AI layer suggested clarifying before relying on the note." details={report.report.ai_documentation_gaps ?? []} />
         <InsightBlock title="Suggested clarifications" body="Questions or documentation updates that could improve review confidence." details={report.report.ai_suggested_clarifications ?? []} />
@@ -1435,6 +1442,16 @@ function averageConfidence(report: AnalysisReport) {
   if (!report.cpt_candidates.length) return 0;
   const total = report.cpt_candidates.reduce((sum, candidate) => sum + candidate.confidence, 0);
   return total / report.cpt_candidates.length;
+}
+
+function cptConfidenceTier(candidate: CPTCodeCandidate) {
+  if (candidate.code === "99999" || !candidate.supported_by_docs || candidate.confidence < 0.7) {
+    return "Needs human coding review";
+  }
+  if (candidate.confidence < 0.85) {
+    return "Possible CPT candidate";
+  }
+  return "High confidence CPT match";
 }
 
 function formatDelta(value: number) {
