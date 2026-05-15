@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type EvidenceSnippet = {
   source: string;
@@ -270,6 +270,7 @@ export default function Home() {
   const [revisionImpact, setRevisionImpact] = useState<RevisionImpact | null>(null);
   const [revisionHistory, setRevisionHistory] = useState<RevisionHistoryItem[]>([]);
   const [lastAnalyzedNote, setLastAnalyzedNote] = useState<string | null>(null);
+  const inputRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void loadHistory();
@@ -380,14 +381,18 @@ export default function Home() {
     }
   }
 
+  function scrollToReviewStart() {
+    inputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <main className="min-h-screen bg-[#f4f1ec] text-[#1f2d33]">
-      <ProductHeader />
+      <ProductHeader onStartReview={scrollToReviewStart} />
 
       <section className="mx-auto max-w-7xl px-5 py-6">
         <WorkflowSteps />
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(420px,1.08fr)]">
+        <div ref={inputRef} className="mt-6 grid gap-6 lg:grid-cols-[minmax(360px,0.82fr)_minmax(0,1.18fr)]">
           <InputPanel
             selectedExample={selectedExample}
             noteText={noteText}
@@ -403,34 +408,37 @@ export default function Home() {
 
           <div className="space-y-5">
             <AnalysisStagePanel visible={analysisStarted || Boolean(report)} loading={loading} complete={Boolean(report)} />
-            <RevisionImpactCard impact={revisionImpact} />
             <ResultSummary report={report} loading={loading} />
+            <AIReviewInsights report={report} />
+            <ImprovementSuggestions report={report} />
+            <AuditFindings report={report} />
           </div>
         </div>
 
         <div className="mt-6 space-y-5">
-          {report && analysisModeLabel(report.report.analysis_mode) === "Hybrid AI mode" ? <AIReviewInsights report={report} /> : null}
-          <AuditFindings report={report} />
-          <ImprovementSuggestions report={report} />
-
-          <Disclosure title="Billing code details" open={showBillingDetails} onToggle={() => setShowBillingDetails((value) => !value)}>
-            <CptCandidates report={report} />
-          </Disclosure>
-
-          <Disclosure title="Parsed note structure" open={showParsedStructure} onToggle={() => setShowParsedStructure((value) => !value)}>
-            <ParsedNoteStructure report={report} />
-          </Disclosure>
-
-          <Disclosure title="Recent Reviews" open={showHistory} onToggle={() => setShowHistory((value) => !value)}>
-            <RecentAnalyses history={history} loading={historyLoading} onLoad={loadAnalysis} />
-          </Disclosure>
-
-          <Disclosure title="System evaluation" open={showEvaluation} onToggle={() => setShowEvaluation((value) => !value)}>
-            <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
-          </Disclosure>
-
-          <Disclosure title="Revision history" open={showRevisionHistory} onToggle={() => setShowRevisionHistory((value) => !value)}>
-            <RevisionHistoryPanel items={revisionHistory} />
+          <Disclosure title="More details" open={showBillingDetails} onToggle={() => setShowBillingDetails((value) => !value)}>
+            <MoreDetails
+              report={report}
+              evaluation={evaluation}
+              evaluationLoading={evaluationLoading}
+              history={history}
+              historyLoading={historyLoading}
+              revisionImpact={revisionImpact}
+              revisionHistory={revisionHistory}
+              onLoadAnalysis={loadAnalysis}
+              sections={{
+                parsed: showParsedStructure,
+                history: showHistory,
+                evaluation: showEvaluation,
+                revision: showRevisionHistory,
+              }}
+              onToggleSection={(section) => {
+                if (section === "parsed") setShowParsedStructure((value) => !value);
+                if (section === "history") setShowHistory((value) => !value);
+                if (section === "evaluation") setShowEvaluation((value) => !value);
+                if (section === "revision") setShowRevisionHistory((value) => !value);
+              }}
+            />
           </Disclosure>
         </div>
       </section>
@@ -442,42 +450,69 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function ProductHeader() {
+function ProductHeader({ onStartReview }: { onStartReview: () => void }) {
   return (
-    <header className="border-b border-[#e7ded2] bg-[#fffdfa]">
-      <div className="mx-auto max-w-7xl px-5 py-8">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+    <header className="border-b border-[#dce9e7] bg-gradient-to-br from-[#f7fbfa] via-[#fffdfa] to-[#eef7f5]">
+      <div className="mx-auto max-w-7xl px-5 py-10">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-center">
           <div>
-            <p className="text-sm font-semibold text-[#58716c]">Healthcare revenue cycle demo</p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#1f2d33]">AI Clinical Ops Agent</h1>
-            <p className="mt-3 max-w-4xl text-base leading-7 text-[#586b69]">
-              Review a synthetic operative note, identify likely procedures, flag documentation risks, and decide what a human billing reviewer should check next.
+            <p className="text-sm font-semibold text-[#2d7772]">Clinical operations review</p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#17343c] md:text-5xl">AI Clinical Ops Agent</h1>
+            <p className="mt-3 text-xl font-medium text-[#31545b]">Operative note review for billing teams.</p>
+            <p className="mt-4 max-w-3xl text-base leading-7 text-[#5d7375]">
+              Identify procedures, surface documentation risks, and prepare coder review next steps from operative notes.
             </p>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#71817d]">
-              Simulates how a billing operations team reviews operative notes before CPT submission.
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={onStartReview}
+                className="rounded-xl bg-[#206b63] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(32,107,99,0.18)] hover:bg-[#195950]"
+              >
+                Start review
+              </button>
+              <p className="text-sm text-[#6f8584]">Human review required before coding or submission.</p>
+            </div>
+            <p className="mt-5 max-w-3xl rounded-2xl border border-[#dce9e7] bg-white/65 px-4 py-3 text-sm leading-6 text-[#617879]">
+              Use de-identified or synthetic notes only. Do not enter patient identifiers in this environment.
             </p>
           </div>
-          <div className="rounded-2xl border border-[#ead8c0] bg-[#fbf2e6] p-5 shadow-[0_10px_26px_rgba(90,68,45,0.06)]">
-            <p className="text-sm font-semibold text-[#7a5428]">Demo only. Do not enter real patient information.</p>
-            <p className="mt-2 text-sm leading-6 text-[#776653]">Use the included synthetic examples or paste synthetic text you created for testing.</p>
+          <div className="rounded-3xl border border-[#d8e8e4] bg-white/78 p-6 shadow-[0_20px_48px_rgba(49,84,91,0.08)]">
+            <p className="text-sm font-semibold text-[#17343c]">Review workflow</p>
+            <div className="mt-5 space-y-4">
+              <HeroStep number="01" title="Add note" text="Paste an operative note or choose an included example." />
+              <HeroStep number="02" title="Analyze" text="Run rules plus optional hybrid AI interpretation." />
+              <HeroStep number="03" title="Review" text="Use the summary to decide what a coder should verify next." />
+            </div>
           </div>
         </div>
 
-        <div className="mt-7 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
           <ValueCard title="Identify the procedure" text="Summarize what operation the note appears to describe." />
-          <ValueCard title="Flag review risks" text="Surface missing details, ambiguity, and billing-review concerns." />
-          <ValueCard title="Suggest next steps" text="Explain what a human coder or billing reviewer should verify." />
+          <ValueCard title="Flag documentation risks" text="Surface missing details, ambiguity, and compliance-sensitive billing concerns." />
+          <ValueCard title="Prepare reviewer next steps" text="Explain what a human coder or billing reviewer should verify before submission." />
         </div>
       </div>
     </header>
   );
 }
 
+function HeroStep({ number, title, text }: { number: string; title: string; text: string }) {
+  return (
+    <div className="flex gap-3">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e6f3f1] text-xs font-semibold text-[#206b63]">{number}</span>
+      <div>
+        <p className="text-sm font-semibold text-[#17343c]">{title}</p>
+        <p className="mt-1 text-sm leading-6 text-[#6b7f80]">{text}</p>
+      </div>
+    </div>
+  );
+}
+
 function ValueCard({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-2xl border border-[#e5ded5] bg-[#fffaf4] p-5 shadow-[0_10px_28px_rgba(54,42,31,0.04)]">
-      <h2 className="text-sm font-semibold text-[#1f2d33]">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-[#667774]">{text}</p>
+    <div className="rounded-2xl border border-[#dce9e7] bg-white/75 p-5 shadow-[0_10px_28px_rgba(49,84,91,0.04)]">
+      <h2 className="text-sm font-semibold text-[#17343c]">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-[#607678]">{text}</p>
     </div>
   );
 }
@@ -489,16 +524,16 @@ function WorkflowSteps() {
     ["Step 3", "Review"],
   ];
   return (
-    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-5 shadow-[0_12px_32px_rgba(54,42,31,0.04)]">
-      <div className="grid gap-4 md:grid-cols-3">
+    <section className="rounded-2xl border border-[#dce9e7] bg-white/80 p-3 shadow-[0_12px_32px_rgba(49,84,91,0.04)]">
+      <div className="grid gap-2 md:grid-cols-3">
         {steps.map(([label, text]) => (
-          <div key={label} className="flex gap-3 rounded-xl bg-[#f7f4ef] p-4">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#245c52] text-sm font-semibold text-white">
+          <div key={label} className="flex items-center gap-3 rounded-xl px-3 py-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e6f3f1] text-sm font-semibold text-[#206b63]">
               {label.replace("Step ", "")}
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{label}</p>
-              <p className="mt-1 text-sm font-medium text-[#34464a]">{text}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
+              <p className="mt-0.5 text-sm font-semibold text-[#31545b]">{text}</p>
             </div>
           </div>
         ))}
@@ -531,11 +566,11 @@ function InputPanel({
   submitLabel: string;
 }) {
   return (
-    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
+    <section className="rounded-2xl border border-[#dce9e7] bg-white/86 p-6 shadow-[0_14px_36px_rgba(49,84,91,0.05)]">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a8a88]">Step 1</p>
-        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Note Input</h2>
-        <p className="mt-2 text-sm leading-6 text-[#667774]">
+        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#789093]">Step 1</p>
+        <h2 className="mt-1 text-xl font-semibold text-[#17343c]">Note Input</h2>
+        <p className="mt-2 text-sm leading-6 text-[#607678]">
           Use an example note or paste your own synthetic note. The system will identify the procedure, flag documentation risks, and suggest what a billing reviewer should check next.
         </p>
       </div>
@@ -544,7 +579,7 @@ function InputPanel({
       <select
         value={selectedExample}
         onChange={(event) => onSelectExample(event.target.value)}
-        className="mt-2 h-11 w-full rounded-xl border border-[#d8d0c4] bg-[#fffefb] px-3 text-sm outline-none focus:border-[#245c52] focus:ring-2 focus:ring-[#d6e5df]"
+        className="mt-2 h-11 w-full rounded-xl border border-[#cfe0dd] bg-[#fbfefd] px-3 text-sm outline-none focus:border-[#206b63] focus:ring-2 focus:ring-[#d6ebe8]"
       >
         {examples.map((example) => (
           <option key={example.id} value={example.id}>
@@ -557,18 +592,18 @@ function InputPanel({
         value={noteText}
         onChange={(event) => onChangeNote(event.target.value)}
         maxLength={20000}
-        className="mt-4 min-h-[410px] w-full resize-y rounded-xl border border-[#d8d0c4] bg-[#fffefb] p-4 font-mono text-sm leading-6 outline-none focus:border-[#245c52] focus:ring-2 focus:ring-[#d6e5df]"
+        className="mt-4 min-h-[410px] w-full resize-y rounded-xl border border-[#cfe0dd] bg-[#fbfefd] p-4 font-mono text-sm leading-6 outline-none focus:border-[#206b63] focus:ring-2 focus:ring-[#d6ebe8]"
       />
       <div className="mt-3 flex items-center justify-between gap-4 text-xs text-[#71817d]">
         <span>{noteText.length.toLocaleString()} / 20,000 characters</span>
-        <span>No PHI</span>
+        <span>Do not enter identifiers</span>
       </div>
 
       <button
         type="button"
         onClick={onSubmit}
         disabled={loading}
-        className="mt-6 w-full rounded-xl bg-[#245c52] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(36,92,82,0.18)] hover:bg-[#1e4f47] disabled:cursor-not-allowed disabled:bg-[#9bb5ad]"
+        className="mt-6 w-full rounded-xl bg-[#206b63] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(32,107,99,0.18)] hover:bg-[#195950] disabled:cursor-not-allowed disabled:bg-[#9bb5ad]"
       >
         {loading ? "Analyzing note..." : submitLabel}
       </button>
@@ -576,7 +611,7 @@ function InputPanel({
         <button
           type="button"
           onClick={onClear}
-          className="mt-3 w-full rounded-xl border border-[#d8d0c4] bg-[#fffefb] px-4 py-3 text-sm font-semibold text-[#34464a] hover:bg-[#f7f4ef]"
+          className="mt-3 w-full rounded-xl border border-[#cfe0dd] bg-[#fbfefd] px-4 py-3 text-sm font-semibold text-[#31545b] hover:bg-[#f4fbf9]"
         >
           Clear report
         </button>
@@ -598,30 +633,30 @@ function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; 
 
   if (!visible) {
     return (
-      <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_12px_32px_rgba(54,42,31,0.05)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7a8a88]">Step 2</p>
-        <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Analysis will run here</h2>
-        <p className="mt-2 text-sm leading-6 text-[#667774]">After you analyze a note, this panel will show the review workflow before the summary appears.</p>
+      <section className="rounded-2xl border border-[#dce9e7] bg-white/82 p-6 shadow-[0_12px_32px_rgba(49,84,91,0.05)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#789093]">Step 2</p>
+        <h2 className="mt-1 text-xl font-semibold text-[#17343c]">Analysis will run here</h2>
+        <p className="mt-2 text-sm leading-6 text-[#607678]">After you analyze a note, this panel will show the review workflow before the summary appears.</p>
       </section>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-[#d8e2dc] bg-[#fbfdfb] p-6 shadow-[0_14px_36px_rgba(39,78,70,0.08)]">
+    <section className="rounded-2xl border border-[#dce9e7] bg-[#fbfefd] p-6 shadow-[0_14px_36px_rgba(49,84,91,0.06)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#607a73]">Step 2</p>
-          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">{loading ? "Analyzing note" : complete ? "Analysis completed" : "Analysis ready"}</h2>
-          <p className="mt-2 text-sm leading-6 text-[#667774]">Simulating how a billing reviewer checks procedure clarity and documentation risk.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#2d7772]">Step 2</p>
+          <h2 className="mt-1 text-xl font-semibold text-[#17343c]">{loading ? "Analyzing note" : complete ? "Analysis completed" : "Analysis ready"}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#607678]">Simulating how a billing reviewer checks procedure clarity and documentation risk.</p>
         </div>
         <StatusBadge status={loading ? "Running" : "Ready"} />
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {checks.map((item, index) => (
-          <div key={item} className="flex items-center gap-3 rounded-xl bg-white/80 px-4 py-3 text-sm text-[#34464a]">
+          <div key={item} className="flex items-center gap-3 rounded-xl bg-white/85 px-4 py-3 text-sm text-[#31545b]">
             <span
               className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                loading && index > 1 ? "bg-[#edf0ec] text-[#84908c]" : "bg-[#dcebe5] text-[#245c52]"
+                loading && index > 1 ? "bg-[#eef3f2] text-[#8b9d9e]" : "bg-[#e1f2ef] text-[#206b63]"
               }`}
             >
               {loading && index > 1 ? "..." : "OK"}
@@ -721,46 +756,46 @@ function ImpactList({ title, items, empty, success = false }: { title: string; i
 function ResultSummary({ report, loading }: { report: AnalysisReport | null; loading: boolean }) {
   const reviewItems = (report?.audit_findings ?? []).filter((finding) => finding.severity !== "info");
   return (
-    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
+    <section className="rounded-2xl border border-[#dce9e7] bg-white/86 p-6 shadow-[0_14px_36px_rgba(49,84,91,0.05)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a8a88]">Step 3</p>
-          <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Review Summary</h2>
-          <p className="mt-2 text-sm leading-6 text-[#667774]">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#789093]">Step 3</p>
+          <h2 className="mt-1 text-xl font-semibold text-[#17343c]">Review Summary</h2>
+          <p className="mt-2 text-sm leading-6 text-[#607678]">
             Status-first billing review guidance for a human reviewer. This is not a final coding decision.
           </p>
           {report ? (
-            <div className="mt-3 rounded-xl border border-[#d8e2dc] bg-[#f7fbf8] px-4 py-3 text-xs leading-5 text-[#667774]">
-              <span className="font-semibold text-[#34464a]">Analysis: {analysisModeLabel(report.report.analysis_mode)}</span>
+            <div className="mt-3 rounded-xl border border-[#dce9e7] bg-[#f7fbfa] px-4 py-3 text-xs leading-5 text-[#607678]">
+              <span className="font-semibold text-[#31545b]">Analysis: {analysisModeLabel(report.report.analysis_mode)}</span>
               {report.report.ai_provider && report.report.ai_model ? (
                 <span className="ml-2 text-[#71817d]">Provider: {providerLabel(report.report.ai_provider)}</span>
               ) : null}
             </div>
           ) : null}
         </div>
-        <StatusBadge status={report?.report.claim_readiness_status ?? (loading ? "Running" : "Not run")} />
+        <StatusBadge status={report ? displayReviewStatus(report) : loading ? "Running" : "Not run"} />
       </div>
 
       {report ? (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryMetric label="Review Status" value={report.report.claim_readiness_status} detail={`Score: ${report.report.claim_readiness_score}/100`} />
+            <SummaryMetric label="Review Status" value={displayReviewStatus(report)} />
             <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} />
             <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} />
             <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} />
           </div>
-          <div className="mt-5 rounded-xl border border-[#d8e2dc] bg-[#f2f8f5] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#607a73]">Billing code</p>
-            <p className="mt-2 text-base font-semibold text-[#1f2d33]">{billingCodeLabel(report)}</p>
+          <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Billing code</p>
+            <p className="mt-2 text-base font-semibold text-[#17343c]">{billingCodeLabel(report)}</p>
             {!meaningfulCptCandidate(report) ? (
               <p className="mt-2 text-sm leading-6 text-[#586b69]">
                 The system identified the procedure, but the local demo CPT library does not contain a confident billing-code match.
               </p>
             ) : null}
           </div>
-          <div className="mt-4 rounded-xl bg-[#f7f4ef] p-4">
-            <p className="mb-3 text-sm font-semibold text-[#34464a]">Plain-English review</p>
-            <p className="mb-3 text-sm leading-6 text-[#586b69]">{reportNarrative(report)}</p>
+          <div className="mt-4 rounded-xl bg-[#f7fbfa] p-4">
+            <p className="mb-3 text-sm font-semibold text-[#31545b]">Plain-English review</p>
+            <p className="mb-3 text-sm leading-6 text-[#607678]">{reportNarrative(report)}</p>
           </div>
         </>
       ) : (
@@ -813,6 +848,82 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
         <FriendlyEmpty title="Billing code details will appear after analysis." text="Unsupported demo codes are hidden from the main summary so they do not look like recommendations." />
       )}
     </SectionCard>
+  );
+}
+
+function MoreDetails({
+  report,
+  evaluation,
+  evaluationLoading,
+  history,
+  historyLoading,
+  revisionImpact,
+  revisionHistory,
+  onLoadAnalysis,
+  sections,
+  onToggleSection,
+}: {
+  report: AnalysisReport | null;
+  evaluation: EvaluationSummary | null;
+  evaluationLoading: boolean;
+  history: AnalysisHistoryItem[];
+  historyLoading: boolean;
+  revisionImpact: RevisionImpact | null;
+  revisionHistory: RevisionHistoryItem[];
+  onLoadAnalysis: (id: string) => void;
+  sections: { parsed: boolean; history: boolean; evaluation: boolean; revision: boolean };
+  onToggleSection: (section: "parsed" | "history" | "evaluation" | "revision") => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Billing code details</summary>
+        <div className="mt-4">
+          <CptCandidates report={report} />
+        </div>
+      </details>
+
+      <DetailSubsection title="Parsed note structure" open={sections.parsed} onToggle={() => onToggleSection("parsed")}>
+        <ParsedNoteStructure report={report} />
+      </DetailSubsection>
+
+      <DetailSubsection title="Recent reviews" open={sections.history} onToggle={() => onToggleSection("history")}>
+        <RecentAnalyses history={history} loading={historyLoading} onLoad={onLoadAnalysis} />
+      </DetailSubsection>
+
+      <DetailSubsection title="System evaluation" open={sections.evaluation} onToggle={() => onToggleSection("evaluation")}>
+        <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
+      </DetailSubsection>
+
+      <DetailSubsection title="Revision history" open={sections.revision} onToggle={() => onToggleSection("revision")}>
+        {revisionImpact ? <RevisionImpactCard impact={revisionImpact} /> : null}
+        <div className={revisionImpact ? "mt-4" : undefined}>
+          <RevisionHistoryPanel items={revisionHistory} />
+        </div>
+      </DetailSubsection>
+    </div>
+  );
+}
+
+function DetailSubsection({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#dce9e7] bg-white/70">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4 text-left text-sm font-semibold text-[#17343c]">
+        <span>{title}</span>
+        <span className="text-lg leading-none text-[#6f8584]">{open ? "-" : "+"}</span>
+      </button>
+      {open ? <div className="border-t border-[#e7efed] p-4">{children}</div> : null}
+    </div>
   );
 }
 
@@ -872,7 +983,7 @@ function SystemEvaluation({ evaluation, loading }: { evaluation: EvaluationSumma
       ) : (
         <FriendlyEmpty
           title={loading ? "Loading synthetic evaluation..." : "Evaluation metrics are unavailable."}
-          text="The API calculates these metrics by running the synthetic notes through the same pipeline used by the dashboard."
+          text="The API calculates these metrics by running the synthetic notes through the same review pipeline used by the app."
         />
       )}
     </SectionCard>
@@ -951,25 +1062,20 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
 function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
   if (!report) {
     return (
-      <SectionCard title="AI Interpretation" explainer="Hybrid AI interpretation appears here when the note needs help beyond the deterministic demo rules.">
-        <FriendlyEmpty title="No AI review yet." text="Rules mode is enough for known examples and confident deterministic results." />
-      </SectionCard>
+      <section className="rounded-2xl border border-[#dce9e7] bg-white/78 p-5 shadow-[0_12px_30px_rgba(49,84,91,0.045)]">
+        <h2 className="text-lg font-semibold text-[#17343c]">AI Interpretation</h2>
+        <p className="mt-2 text-sm leading-6 text-[#607678]">AI interpretation appears when additional note understanding is needed.</p>
+      </section>
     );
   }
 
   const usedAI = analysisModeLabel(report.report.analysis_mode) === "Hybrid AI mode";
   if (!usedAI) {
     return (
-      <SectionCard title="AI Interpretation" explainer="Hybrid AI interpretation appears here when the note needs help beyond the deterministic demo rules.">
-        <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
-          <p className="font-semibold text-[#34464a]">Rules mode handled this review.</p>
-          <p className="mt-2 text-sm leading-6 text-[#667774]">
-            {report.report.ai_assist_status === "AI enhancement temporarily unavailable. Core billing review completed successfully."
-              ? report.report.ai_assist_status
-              : "No AI enhancement was needed for this note."}
-          </p>
-        </div>
-      </SectionCard>
+      <section className="rounded-2xl border border-[#dce9e7] bg-white/78 p-5 shadow-[0_12px_30px_rgba(49,84,91,0.045)]">
+        <h2 className="text-lg font-semibold text-[#17343c]">AI Interpretation</h2>
+        <p className="mt-2 text-sm leading-6 text-[#607678]">Rules-based review completed. AI interpretation was not needed or unavailable.</p>
+      </section>
     );
   }
 
@@ -1064,53 +1170,6 @@ function ParsedNoteStructure({ report }: { report: AnalysisReport | null }) {
   );
 }
 
-function EvidenceUsed({ report }: { report: AnalysisReport | null }) {
-  return (
-    <SectionCard title="Why this result?" explainer="Shows the procedure match, risks checked, and references that supported the billing review.">
-      {report ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <EvidenceGroup
-            title="Why this CPT?"
-            rows={report.cpt_candidates.map((candidate) => ({
-              heading: `${candidate.code} - ${candidate.procedure_name}`,
-              body: candidate.rationale,
-              meta: candidate.evidence_used[0]?.source,
-            }))}
-          />
-          <EvidenceGroup
-            title="What risks were checked?"
-            rows={report.audit_findings.map((finding) => ({
-              heading: finding.title ?? findingTitle(finding.category),
-              body: finding.explanation ?? finding.message,
-              meta: finding.severity,
-            }))}
-          />
-          <EvidenceGroup
-            title="What references supported this?"
-            rows={report.cpt_candidates.flatMap((candidate) =>
-              candidate.evidence_used.length
-                ? candidate.evidence_used.map((evidence) => ({
-                    heading: evidence.source,
-                    body: evidence.snippet,
-                    meta: `CPT ${candidate.code}`,
-                  }))
-                : [
-                    {
-                      heading: `CPT ${candidate.code}`,
-                      body: "No matching reference snippet found in the local demo guidelines.",
-                      meta: "Local demo guidelines",
-                    },
-                  ],
-            )}
-          />
-        </div>
-      ) : (
-        <FriendlyEmpty title="Evidence will appear after analysis." text="References are hidden by default to keep the first report easy to read." />
-      )}
-    </SectionCard>
-  );
-}
-
 function RecentAnalyses({
   history,
   loading,
@@ -1198,14 +1257,14 @@ function NotePreview({ title, text }: { title: string; text: string }) {
 
 function Disclosure({ title, open, onToggle, children }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#e5ded5] bg-[#fffdfa] shadow-[0_12px_30px_rgba(54,42,31,0.045)]">
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-5 px-6 py-5 text-left transition hover:bg-[#fbf7f1]">
+    <section className="overflow-hidden rounded-2xl border border-[#dce9e7] bg-white/82 shadow-[0_12px_30px_rgba(49,84,91,0.045)]">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-5 px-6 py-5 text-left transition hover:bg-[#f4fbf9]">
         <span>
-          <span className="block text-base font-semibold text-[#1f2d33]">{title}</span>
-          <span className="mt-1 block text-xs font-medium uppercase tracking-[0.08em] text-[#7a8a88]">{open ? "Expanded" : "Collapsed"}</span>
+          <span className="block text-base font-semibold text-[#17343c]">{title}</span>
+          <span className="mt-1 block text-xs font-medium uppercase tracking-[0.08em] text-[#789093]">{open ? "Expanded" : "Collapsed"}</span>
         </span>
         <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#d8d0c4] bg-[#fffaf4] text-lg font-semibold text-[#245c52] transition-transform ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#cfe4df] bg-[#edf7f5] text-lg font-semibold text-[#206b63] transition-transform ${
             open ? "rotate-45" : ""
           }`}
           aria-hidden="true"
@@ -1213,16 +1272,16 @@ function Disclosure({ title, open, onToggle, children }: { title: string; open: 
           +
         </span>
       </button>
-      {open ? <div className="border-t border-[#efe8df] bg-[#fffdfa] p-6">{children}</div> : null}
+      {open ? <div className="border-t border-[#e7efed] bg-[#fbfefd] p-6">{children}</div> : null}
     </section>
   );
 }
 
 function SectionCard({ title, explainer, children }: { title: string; explainer: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-[#e4ddd2] bg-[#fffdfa] p-6 shadow-[0_14px_36px_rgba(54,42,31,0.05)]">
-      <h2 className="text-lg font-semibold text-[#1f2d33]">{title}</h2>
-      <p className="mt-1 text-sm leading-6 text-[#667774]">{explainer}</p>
+    <section className="rounded-2xl border border-[#dce9e7] bg-white/82 p-6 shadow-[0_14px_36px_rgba(49,84,91,0.05)]">
+      <h2 className="text-lg font-semibold text-[#17343c]">{title}</h2>
+      <p className="mt-1 text-sm leading-6 text-[#607678]">{explainer}</p>
       <div className="mt-5">{children}</div>
     </section>
   );
@@ -1230,19 +1289,10 @@ function SectionCard({ title, explainer, children }: { title: string; explainer:
 
 function SummaryMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-[#1f2d33]">{value}</p>
-      {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#71817d]">{detail}</p> : null}
-    </div>
-  );
-}
-
-function PlainFinding({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-[#f7f4ef] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{label}</p>
-      <p className="mt-2 text-sm leading-6 text-[#34464a]">{value}</p>
+    <div className="rounded-xl border border-[#dce9e7] bg-[#f9fcfb] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-[#17343c]">{value}</p>
+      {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#6f8584]">{detail}</p> : null}
     </div>
   );
 }
@@ -1284,25 +1334,6 @@ function friendlyFilename(value: string) {
 
 function readableCategory(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function EvidenceGroup({ title, rows }: { title: string; rows: Array<{ heading: string; body: string; meta?: string }> }) {
-  return (
-    <div className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
-      <h3 className="font-semibold text-[#1f2d33]">{title}</h3>
-      <div className="mt-3 space-y-3">
-        {rows.map((row, index) => (
-          <div key={`${row.heading}-${index}`} className="rounded-lg bg-[#fffdfa] p-3">
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold text-[#34464a]">{row.heading}</p>
-              {row.meta ? <span className="text-xs text-[#71817d]">{row.meta}</span> : null}
-            </div>
-            <p className="mt-2 text-sm leading-6 text-[#667774]">{row.body}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function recommendedAction(status: string) {
@@ -1364,6 +1395,20 @@ function nextStepLabel(report: AnalysisReport) {
   return report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status);
 }
 
+function displayReviewStatus(report: AnalysisReport) {
+  if (report.report.claim_readiness_status !== "High Risk") return report.report.claim_readiness_status;
+  if (!meaningfulCptCandidate(report) && !hasSevereBillingRisk(report)) return "Needs Review";
+  return "High Risk";
+}
+
+function hasSevereBillingRisk(report: AnalysisReport) {
+  return report.audit_findings.some((finding) => {
+    if (finding.category === "bundling_conflict") return true;
+    if (finding.category === "unsupported_code") return false;
+    return finding.severity === "high";
+  });
+}
+
 function mainIssue(findings: AuditFinding[]) {
   const categories = findings.map((finding) => finding.category);
   if (categories.includes("bundling_conflict")) return "Bundling conflict";
@@ -1383,15 +1428,6 @@ function reviewMainIssue(report: AnalysisReport) {
   return reviewIssueLabel(report.report.main_issue ?? mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info")));
 }
 
-function fallbackReasons(report: AnalysisReport) {
-  return [
-    report.cpt_candidates[0]?.confidence >= 0.85 ? "Strong procedure match." : "Procedure match needs review.",
-    report.cpt_candidates.every((candidate) => candidate.supported_by_docs) ? "Supporting guideline found." : "Missing supporting guideline.",
-    (report.report.main_issue ?? "No major issues") === "No major issues" ? "Documentation appears complete for the demo checks." : `Documentation issue: ${report.report.main_issue}.`,
-    report.report.claim_readiness_status === "High Risk" ? "Audit risk high." : report.report.claim_readiness_status === "Needs Review" ? "Audit risk medium." : "Audit risk low.",
-  ];
-}
-
 function reportNarrative(report: AnalysisReport) {
   const issue = reviewMainIssue(report);
   const action = nextStepLabel(report);
@@ -1400,7 +1436,7 @@ function reportNarrative(report: AnalysisReport) {
   if (!meaningfulCptCandidate(report)) {
     return `The note describes ${procedure}. ${family ? `The app identified this as a ${family} case, but ` : "However, "}the local demo code library does not contain enough billing rules to assign a confident CPT. A human coding reviewer should confirm the operative extent and appropriate billing code.`;
   }
-  if (report.report.claim_readiness_status === "Ready") {
+  if (displayReviewStatus(report) === "Ready") {
     return `The note is marked Ready for standard billing review because the procedure is documented clearly and the demo checks did not find major billing risks. Recommended next step: ${action}`;
   }
   if (issue === "Missing laterality") {
@@ -1409,7 +1445,7 @@ function reportNarrative(report: AnalysisReport) {
   if (issue === "Bundling conflict") {
     return `The note is high risk because the documentation produced a possible bundled-code conflict. A human reviewer should decide which service should be billed.`;
   }
-  return `The note is marked ${report.report.claim_readiness_status} because the billing review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
+  return `The note is marked ${displayReviewStatus(report)} because the billing review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
 }
 
 function findingTitle(category: string) {
