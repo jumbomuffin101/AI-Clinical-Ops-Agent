@@ -778,8 +778,10 @@ function ImpactList({ title, items, empty, success = false }: { title: string; i
 
 function ResultSummary({ report, loading }: { report: AnalysisReport | null; loading: boolean }) {
   const reviewItems = (report?.audit_findings ?? []).filter((finding) => finding.severity !== "info");
+  const status = report ? displayReviewStatus(report) : loading ? "Running" : "Not run";
+  const summaryStyles = getStatusStyles(status);
   return (
-    <section className="rounded-2xl border border-[#dce9e7] bg-white/86 p-6 shadow-[0_14px_36px_rgba(49,84,91,0.05)]">
+    <section className={`rounded-2xl border p-6 shadow-[0_14px_36px_rgba(49,84,91,0.05)] ${summaryStyles.summaryCard}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#789093]">Step 3</p>
@@ -793,13 +795,13 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
             </div>
           ) : null}
         </div>
-        <StatusBadge status={report ? displayReviewStatus(report) : loading ? "Running" : "Not run"} />
+        <StatusBadge status={status} />
       </div>
 
       {report ? (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryMetric label="Review Status" value={displayReviewStatus(report)} />
+            <SummaryMetric label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
             <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} />
             <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} />
             <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} />
@@ -1346,11 +1348,12 @@ function SectionCard({ title, explainer, children }: { title: string; explainer:
   );
 }
 
-function SummaryMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
+function SummaryMetric({ label, value, detail, status }: { label: string; value: string; detail?: string; status?: string }) {
+  const statusStyles = status ? getStatusStyles(status) : null;
   return (
-    <div className="rounded-xl border border-[#dce9e7] bg-[#f9fcfb] p-4">
+    <div className={`rounded-xl border p-4 ${statusStyles?.metricCard ?? "border-[#dce9e7] bg-[#f9fcfb]"}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-[#17343c]">{value}</p>
+      <p className={`mt-2 text-lg font-semibold ${statusStyles?.text ?? "text-[#17343c]"}`}>{value}</p>
       {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#6f8584]">{detail}</p> : null}
     </div>
   );
@@ -1365,18 +1368,47 @@ function FriendlyEmpty({ title, text }: { title: string; text: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function getStatusStyles(status: string) {
   const normalized = status.toLowerCase();
-  const styles = normalized.includes("high")
-    ? "border-[#e7bdb4] bg-[#fbefeb] text-[#8f3b2d]"
-    : normalized.includes("review") || normalized.includes("running")
-      ? "border-[#e4cfa8] bg-[#fbf3e4] text-[#7a5724]"
-      : normalized.includes("ready") || normalized.includes("pass")
-        ? "border-[#c4dad2] bg-[#edf6f2] text-[#245c52]"
-        : normalized.includes("fail")
-          ? "border-[#e7bdb4] bg-[#fbefeb] text-[#8f3b2d]"
-        : "border-[#e4ddd2] bg-[#f7f4ef] text-[#71817d]";
-  return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${styles}`}>{status}</span>;
+  if (normalized.includes("high") || normalized.includes("fail")) {
+    return {
+      text: "text-[#9f2f24]",
+      badge: "border-[#efc2ba] bg-[#fbebe8] text-[#9f2f24]",
+      metricCard: "border-[#efc2ba] bg-[#fff6f4]",
+      summaryCard: "border-[#efc2ba] bg-[#fffafa]",
+    };
+  }
+  if (normalized.includes("review") || normalized.includes("running")) {
+    return {
+      text: "text-[#8a5b12]",
+      badge: "border-[#e8d19b] bg-[#fff6dc] text-[#8a5b12]",
+      metricCard: "border-[#e8d19b] bg-[#fffaf0]",
+      summaryCard: "border-[#e8d19b] bg-[#fffdf8]",
+    };
+  }
+  if (normalized.includes("ready") || normalized.includes("pass")) {
+    return {
+      text: "text-[#1f6b54]",
+      badge: "border-[#b9ddcf] bg-[#eaf7f1] text-[#1f6b54]",
+      metricCard: "border-[#b9ddcf] bg-[#f4fbf8]",
+      summaryCard: "border-[#b9ddcf] bg-[#fbfffd]",
+    };
+  }
+  return {
+    text: "text-[#5f7374]",
+    badge: "border-[#dce9e7] bg-[#f7fbfa] text-[#5f7374]",
+    metricCard: "border-[#dce9e7] bg-[#f9fcfb]",
+    summaryCard: "border-[#dce9e7] bg-white/86",
+  };
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles = getStatusStyles(status);
+  return (
+    <span className={`inline-flex items-center justify-center whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-semibold leading-none ${styles.badge}`}>
+      {status}
+    </span>
+  );
 }
 
 function formatCurrency(value: number) {
