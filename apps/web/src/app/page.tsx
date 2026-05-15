@@ -149,6 +149,9 @@ type RevisionHistoryItem = {
   impact: RevisionImpact;
 };
 
+const IDENTIFIER_WARNING =
+  "Potential patient identifiers detected. Remove MRNs, DOBs, names, contact information, or other patient identifiers before analysis.";
+
 const examples = [
   {
     id: "av-fistula",
@@ -246,9 +249,16 @@ Procedure: Laparoscopic cholecystectomy.
 
 Operative note: Four ports were placed and the gallbladder was dissected from the liver bed. The cystic duct and artery were clipped and divided. The gallbladder was removed in an endoscopic bag. No cholangiogram was performed and no separate duct imaging was obtained.`,
   },
+  {
+    id: "custom-note",
+    label: "Custom Note",
+    title: "Custom operative note",
+    note: "",
+  },
 ];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const selectorExamples = examples.filter((example) => ["av-fistula", "hernia-risk", "bundled-risk", "custom-note"].includes(example.id));
 
 export default function Home() {
   const [selectedExample, setSelectedExample] = useState(examples[0].id);
@@ -271,6 +281,7 @@ export default function Home() {
   const [revisionHistory, setRevisionHistory] = useState<RevisionHistoryItem[]>([]);
   const [lastAnalyzedNote, setLastAnalyzedNote] = useState<string | null>(null);
   const inputRef = useRef<HTMLDivElement | null>(null);
+  const identifierWarning = containsLikelyIdentifier(noteText) ? IDENTIFIER_WARNING : null;
 
   useEffect(() => {
     void loadHistory();
@@ -280,7 +291,7 @@ export default function Home() {
   function chooseExample(exampleId: string) {
     const example = examples.find((item) => item.id === exampleId) ?? examples[0];
     setSelectedExample(example.id);
-    setNoteText(example.note);
+    setNoteText(example.id === "custom-note" ? "" : example.note);
     setReport(null);
     setError(null);
     setAnalysisStarted(false);
@@ -334,6 +345,10 @@ export default function Home() {
   }
 
   async function submitNote() {
+    if (identifierWarning) {
+      setError(identifierWarning);
+      return;
+    }
     if (noteText.trim().length < 50) {
       setError("Please choose an example or enter a synthetic operative note.");
       return;
@@ -404,19 +419,18 @@ export default function Home() {
             onClear={clearReport}
             hasReport={Boolean(report) || analysisStarted}
             submitLabel={report ? "Reanalyze Updated Note" : "Analyze Note for Billing"}
+            identifierWarning={identifierWarning}
           />
 
           <div className="space-y-5">
             <AnalysisStagePanel visible={analysisStarted || Boolean(report)} loading={loading} complete={Boolean(report)} />
             <ResultSummary report={report} loading={loading} />
-            <AIReviewInsights report={report} />
             <ImprovementSuggestions report={report} />
-            <AuditFindings report={report} />
           </div>
         </div>
 
         <div className="mt-6 space-y-5">
-          <Disclosure title="More details" open={showBillingDetails} onToggle={() => setShowBillingDetails((value) => !value)}>
+          <Disclosure title="View detailed review" open={showBillingDetails} onToggle={() => setShowBillingDetails((value) => !value)}>
             <MoreDetails
               report={report}
               evaluation={evaluation}
@@ -425,6 +439,7 @@ export default function Home() {
               historyLoading={historyLoading}
               revisionImpact={revisionImpact}
               revisionHistory={revisionHistory}
+              reviewMetadata={report ? reviewMetadata(report) : null}
               onLoadAnalysis={loadAnalysis}
               sections={{
                 parsed: showParsedStructure,
@@ -553,6 +568,7 @@ function InputPanel({
   onClear,
   hasReport,
   submitLabel,
+  identifierWarning,
 }: {
   selectedExample: string;
   noteText: string;
@@ -564,6 +580,7 @@ function InputPanel({
   onClear: () => void;
   hasReport: boolean;
   submitLabel: string;
+  identifierWarning: string | null;
 }) {
   return (
     <section className="rounded-2xl border border-[#dce9e7] bg-white/86 p-6 shadow-[0_14px_36px_rgba(49,84,91,0.05)]">
@@ -575,13 +592,14 @@ function InputPanel({
         </p>
       </div>
 
-      <label className="mt-6 block text-sm font-semibold text-[#34464a]">Example note</label>
+      <label className="mt-6 block text-sm font-semibold text-[#34464a]">Start with an example or enter your own note</label>
+      <p className="mt-1 text-sm leading-6 text-[#607678]">You can use an example note or enter your own de-identified/synthetic operative note.</p>
       <select
         value={selectedExample}
         onChange={(event) => onSelectExample(event.target.value)}
         className="mt-2 h-11 w-full rounded-xl border border-[#cfe0dd] bg-[#fbfefd] px-3 text-sm outline-none focus:border-[#206b63] focus:ring-2 focus:ring-[#d6ebe8]"
       >
-        {examples.map((example) => (
+        {selectorExamples.map((example) => (
           <option key={example.id} value={example.id}>
             {example.label}
           </option>
@@ -592,17 +610,22 @@ function InputPanel({
         value={noteText}
         onChange={(event) => onChangeNote(event.target.value)}
         maxLength={20000}
+        placeholder="Paste a de-identified or synthetic operative note here..."
         className="mt-4 min-h-[410px] w-full resize-y rounded-xl border border-[#cfe0dd] bg-[#fbfefd] p-4 font-mono text-sm leading-6 outline-none focus:border-[#206b63] focus:ring-2 focus:ring-[#d6ebe8]"
       />
       <div className="mt-3 flex items-center justify-between gap-4 text-xs text-[#71817d]">
         <span>{noteText.length.toLocaleString()} / 20,000 characters</span>
-        <span>Do not enter identifiers</span>
+        <span>Use only de-identified or synthetic notes.</span>
       </div>
+      <p className="mt-2 rounded-xl border border-[#d8e8e4] bg-[#f7fbfa] px-3 py-2 text-xs leading-5 text-[#607678]">
+        Use only de-identified or synthetic notes. This environment is not configured for patient-identifiable information.
+      </p>
+      {identifierWarning ? <div className="mt-3 rounded-xl border border-[#e6c0b5] bg-[#fbefeb] p-3 text-sm font-medium text-[#8f3b2d]">{identifierWarning}</div> : null}
 
       <button
         type="button"
         onClick={onSubmit}
-        disabled={loading}
+        disabled={loading || Boolean(identifierWarning)}
         className="mt-6 w-full rounded-xl bg-[#206b63] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(32,107,99,0.18)] hover:bg-[#195950] disabled:cursor-not-allowed disabled:bg-[#9bb5ad]"
       >
         {loading ? "Analyzing note..." : submitLabel}
@@ -766,10 +789,7 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
           </p>
           {report ? (
             <div className="mt-3 rounded-xl border border-[#dce9e7] bg-[#f7fbfa] px-4 py-3 text-xs leading-5 text-[#607678]">
-              <span className="font-semibold text-[#31545b]">Analysis: {analysisModeLabel(report.report.analysis_mode)}</span>
-              {report.report.ai_provider && report.report.ai_model ? (
-                <span className="ml-2 text-[#71817d]">Provider: {providerLabel(report.report.ai_provider)}</span>
-              ) : null}
+              <span className="font-semibold text-[#31545b]">{reviewModeMessage(report)}</span>
             </div>
           ) : null}
         </div>
@@ -859,6 +879,7 @@ function MoreDetails({
   historyLoading,
   revisionImpact,
   revisionHistory,
+  reviewMetadata,
   onLoadAnalysis,
   sections,
   onToggleSection,
@@ -870,6 +891,7 @@ function MoreDetails({
   historyLoading: boolean;
   revisionImpact: RevisionImpact | null;
   revisionHistory: RevisionHistoryItem[];
+  reviewMetadata: Array<{ label: string; value: string }> | null;
   onLoadAnalysis: (id: string) => void;
   sections: { parsed: boolean; history: boolean; evaluation: boolean; revision: boolean };
   onToggleSection: (section: "parsed" | "history" | "evaluation" | "revision") => void;
@@ -877,9 +899,23 @@ function MoreDetails({
   return (
     <div className="space-y-3">
       <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">AI interpretation details</summary>
+        <div className="mt-4">
+          <AIReviewInsights report={report} />
+        </div>
+      </details>
+
+      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
         <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Billing code details</summary>
         <div className="mt-4">
           <CptCandidates report={report} />
+        </div>
+      </details>
+
+      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Billing risks</summary>
+        <div className="mt-4">
+          <AuditFindings report={report} />
         </div>
       </details>
 
@@ -901,6 +937,13 @@ function MoreDetails({
           <RevisionHistoryPanel items={revisionHistory} />
         </div>
       </DetailSubsection>
+
+      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Technical analysis metadata</summary>
+        <div className="mt-4">
+          <TechnicalMetadata rows={reviewMetadata} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -923,6 +966,22 @@ function DetailSubsection({
         <span className="text-lg leading-none text-[#6f8584]">{open ? "-" : "+"}</span>
       </button>
       {open ? <div className="border-t border-[#e7efed] p-4">{children}</div> : null}
+    </div>
+  );
+}
+
+function TechnicalMetadata({ rows }: { rows: Array<{ label: string; value: string }> | null }) {
+  if (!rows) {
+    return <FriendlyEmpty title="No analysis metadata yet." text="Run a review to see analysis metadata." />;
+  }
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {rows.map((row) => (
+        <div key={row.label} className="rounded-xl border border-[#dce9e7] bg-[#f9fcfb] p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{row.label}</p>
+          <p className="mt-2 text-sm font-semibold text-[#31545b]">{row.value}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1069,7 +1128,7 @@ function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
     );
   }
 
-  const usedAI = analysisModeLabel(report.report.analysis_mode) === "Hybrid AI mode";
+  const usedAI = isAiAssisted(report);
   if (!usedAI) {
     return (
       <section className="rounded-2xl border border-[#dce9e7] bg-white/78 p-5 shadow-[0_12px_30px_rgba(49,84,91,0.045)]">
@@ -1343,6 +1402,19 @@ function recommendedAction(status: string) {
   return "Run analysis to generate a recommended action.";
 }
 
+function containsLikelyIdentifier(text: string) {
+  const patterns = [
+    /\bMRN[:\s#-]*\d{4,}\b/i,
+    /\bDOB[:\s-]*(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})\b/i,
+    /\b(?:Patient\s+Name|Name)[:\s-]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/i,
+    /\b\d{3}-\d{2}-\d{4}\b/,
+    /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/,
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+    /\b\d{1,6}\s+[A-Za-z0-9.\s]{2,40}\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd)\b/i,
+  ];
+  return patterns.some((pattern) => pattern.test(text));
+}
+
 function isMeaningfulCpt(candidate: CPTCodeCandidate) {
   return candidate.code !== "99999" && candidate.supported_by_docs && candidate.confidence >= 0.75;
 }
@@ -1360,6 +1432,19 @@ function billingCodeLabel(report: AnalysisReport) {
 function historyCodeLabel(code?: string | null) {
   if (!code || code === "99999") return "Review needed";
   return code;
+}
+
+function reviewModeMessage(report: AnalysisReport) {
+  return isAiAssisted(report) ? "AI-assisted review used to interpret the note." : "Standard review completed.";
+}
+
+function reviewMetadata(report: AnalysisReport) {
+  return [
+    { label: "Review type", value: analysisModeLabel(report.report.analysis_mode) },
+    { label: "Provider", value: report.report.ai_provider ? providerLabel(report.report.ai_provider) : "Not used" },
+    { label: "Model", value: report.report.ai_model ?? "Not used" },
+    { label: "AI status", value: report.report.ai_assist_status ?? "No AI status recorded" },
+  ];
 }
 
 function detectedProcedureLabel(report: AnalysisReport) {
@@ -1527,8 +1612,12 @@ function formatDelta(value: number) {
 }
 
 function analysisModeLabel(value?: string) {
-  if (value === "hybrid_ai" || value === "Hybrid AI mode") return "Hybrid AI mode";
-  return "Rules mode";
+  if (value === "hybrid_ai" || value === "Hybrid AI mode") return "AI-assisted review";
+  return "Standard review";
+}
+
+function isAiAssisted(report: AnalysisReport) {
+  return report.report.analysis_mode === "hybrid_ai" || report.report.analysis_mode === "Hybrid AI mode";
 }
 
 function providerLabel(value: string) {

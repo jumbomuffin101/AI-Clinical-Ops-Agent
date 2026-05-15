@@ -236,6 +236,29 @@ def test_invalid_note_input_returns_readable_error(client):
     assert body["error"]["message"] == "Request validation failed."
 
 
+@pytest.mark.parametrize(
+    "identifier_text",
+    [
+        "MRN: 123456",
+        "DOB: 01/02/1970",
+        "test.patient@example.com",
+        "555-123-4567",
+        "Patient Name: Jane Smith",
+    ],
+)
+def test_identifier_containing_note_is_rejected(client, identifier_text):
+    note = (
+        f"Title: Synthetic procedure note. {identifier_text}. "
+        "Procedure: Diagnostic colonoscopy. Operative note: The colonoscope was advanced to the cecum."
+    )
+
+    response = client.post("/api/notes", json={"title": "Identifier note", "note_text": note})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "Potential patient identifiers detected. Please remove identifiers before analysis."
+    assert client.get("/api/analyses").json() == []
+
+
 def test_missing_analysis_returns_404(client):
     response = client.get("/api/analyses/00000000-0000-0000-0000-000000000000")
     assert response.status_code == 404

@@ -4,6 +4,7 @@ import re
 PHI_PATTERNS = [
     re.compile(r"\bMRN[:\s#-]*\d{4,}\b", re.IGNORECASE),
     re.compile(r"\bDOB[:\s-]*(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})\b", re.IGNORECASE),
+    re.compile(r"\b(?:Patient\s+Name|Name)[:\s-]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b", re.IGNORECASE),
     re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b"),
     re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),

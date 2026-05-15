@@ -36,6 +36,7 @@ from app.safety.phi_detector import contains_phi_like_identifier
 logger = logging.getLogger(__name__)
 AI_CACHE_TTL_SECONDS = 600
 AI_RESPONSE_CACHE: dict[str, tuple[float, AIStructuredOperativeNote]] = {}
+PHI_REJECTION_MESSAGE = "Potential patient identifiers detected. Please remove identifiers before analysis."
 
 
 class AnalysisService:
@@ -52,6 +53,10 @@ class AnalysisService:
         self._known_note_hashes = self._load_known_note_hashes()
 
     def create_analysis(self, db: Session, payload: OperativeNote) -> AnalysisReport:
+        if contains_phi_like_identifier(payload.note_text):
+            log_event(logger, logging.WARNING, "analysis.rejected", reason="phi_like_identifier_detected")
+            raise ValueError(PHI_REJECTION_MESSAGE)
+
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
         db.flush()

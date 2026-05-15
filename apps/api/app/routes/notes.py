@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.schemas import AnalysisListItem, AnalysisReport, OperativeNote
-from app.services.analysis_service import AnalysisService
+from app.safety.phi_detector import contains_phi_like_identifier
+from app.services.analysis_service import PHI_REJECTION_MESSAGE, AnalysisService
 
 router = APIRouter(prefix="/api", tags=["analyses"])
 service = AnalysisService()
@@ -13,7 +14,14 @@ service = AnalysisService()
 
 @router.post("/notes", response_model=AnalysisReport, status_code=status.HTTP_201_CREATED)
 def submit_note(payload: OperativeNote, db: Session = Depends(get_db)) -> AnalysisReport:
-    return service.create_analysis(db, payload)
+    if contains_phi_like_identifier(payload.note_text):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PHI_REJECTION_MESSAGE)
+    try:
+        return service.create_analysis(db, payload)
+    except ValueError as exc:
+        if str(exc) == PHI_REJECTION_MESSAGE:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PHI_REJECTION_MESSAGE) from exc
+        raise
 
 
 @router.get("/analyses", response_model=list[AnalysisListItem])
