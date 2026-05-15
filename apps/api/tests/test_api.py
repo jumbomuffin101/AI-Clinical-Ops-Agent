@@ -259,6 +259,16 @@ def test_identifier_containing_note_is_rejected(client, identifier_text):
     assert client.get("/api/analyses").json() == []
 
 
+def test_identifier_in_note_title_is_rejected(client):
+    note = "Procedure: Laparoscopic appendectomy. Operative note: Appendix was removed laparoscopically without complication."
+
+    response = client.post("/api/notes", json={"title": "Patient Name: Jane Smith", "note_text": note})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "Potential patient identifiers detected. Please remove identifiers before analysis."
+    assert client.get("/api/analyses").json() == []
+
+
 def test_missing_analysis_returns_404(client):
     response = client.get("/api/analyses/00000000-0000-0000-0000-000000000000")
     assert response.status_code == 404

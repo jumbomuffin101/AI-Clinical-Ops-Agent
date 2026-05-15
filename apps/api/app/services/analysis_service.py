@@ -53,7 +53,7 @@ class AnalysisService:
         self._known_note_hashes = self._load_known_note_hashes()
 
     def create_analysis(self, db: Session, payload: OperativeNote) -> AnalysisReport:
-        if contains_phi_like_identifier(payload.note_text):
+        if contains_phi_like_identifier(f"{payload.title}\n{payload.note_text}"):
             log_event(logger, logging.WARNING, "analysis.rejected", reason="phi_like_identifier_detected")
             raise ValueError(PHI_REJECTION_MESSAGE)
 

@@ -14,7 +14,7 @@ service = AnalysisService()
 
 @router.post("/notes", response_model=AnalysisReport, status_code=status.HTTP_201_CREATED)
 def submit_note(payload: OperativeNote, db: Session = Depends(get_db)) -> AnalysisReport:
-    if contains_phi_like_identifier(payload.note_text):
+    if contains_phi_like_identifier(f"{payload.title}\n{payload.note_text}"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PHI_REJECTION_MESSAGE)
     try:
         return service.create_analysis(db, payload)

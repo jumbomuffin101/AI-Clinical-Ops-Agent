@@ -281,7 +281,7 @@ export default function Home() {
   const [revisionHistory, setRevisionHistory] = useState<RevisionHistoryItem[]>([]);
   const [lastAnalyzedNote, setLastAnalyzedNote] = useState<string | null>(null);
   const inputRef = useRef<HTMLDivElement | null>(null);
-  const identifierWarning = containsLikelyIdentifier(noteText) ? IDENTIFIER_WARNING : null;
+  const identifierWarning = containsLikelyIdentifier(`${selected.title}\n${noteText}`) ? IDENTIFIER_WARNING : null;
 
   useEffect(() => {
     void loadHistory();
@@ -425,7 +425,7 @@ export default function Home() {
           <div className="space-y-5">
             <AnalysisStagePanel visible={analysisStarted || Boolean(report)} loading={loading} complete={Boolean(report)} />
             <ResultSummary report={report} loading={loading} />
-            <ImprovementSuggestions report={report} />
+            {hasSuggestedFixes(report) ? <ImprovementSuggestions report={report} /> : null}
           </div>
         </div>
 
@@ -620,7 +620,12 @@ function InputPanel({
       <p className="mt-2 rounded-xl border border-[#d8e8e4] bg-[#f7fbfa] px-3 py-2 text-xs leading-5 text-[#607678]">
         Use only de-identified or synthetic notes. This environment is not configured for patient-identifiable information.
       </p>
-      {identifierWarning ? <div className="mt-3 rounded-xl border border-[#e6c0b5] bg-[#fbefeb] p-3 text-sm font-medium text-[#8f3b2d]">{identifierWarning}</div> : null}
+      {identifierWarning ? (
+        <div className="mt-3 rounded-2xl border border-[#efc2ba] bg-[#fbebe8] p-4 shadow-[0_10px_22px_rgba(159,47,36,0.08)]">
+          <p className="text-sm font-semibold text-[#9f2f24]">Analysis blocked</p>
+          <p className="mt-1 text-sm leading-6 text-[#8f3b2d]">{identifierWarning}</p>
+        </div>
+      ) : null}
 
       <button
         type="button"
@@ -800,11 +805,11 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
       {report ? (
         <>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryMetric label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
-            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} />
-            <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} />
-            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} />
+          <div className="mt-6 grid gap-4 md:grid-cols-6 xl:grid-cols-12">
+            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
+            <SummaryMetric className="md:col-span-4 xl:col-span-4" label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="line-clamp-3" />
+            <SummaryMetric className="md:col-span-3 xl:col-span-3" label="Main Issue" value={reviewMainIssue(report)} />
+            <SummaryMetric className="md:col-span-3 xl:col-span-3" label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="line-clamp-3" />
           </div>
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Billing code</p>
@@ -1348,12 +1353,30 @@ function SectionCard({ title, explainer, children }: { title: string; explainer:
   );
 }
 
-function SummaryMetric({ label, value, detail, status }: { label: string; value: string; detail?: string; status?: string }) {
+function SummaryMetric({
+  label,
+  value,
+  detail,
+  status,
+  className = "",
+  title,
+  clamp = "line-clamp-2",
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  status?: string;
+  className?: string;
+  title?: string;
+  clamp?: string;
+}) {
   const statusStyles = status ? getStatusStyles(status) : null;
   return (
-    <div className={`rounded-xl border p-4 ${statusStyles?.metricCard ?? "border-[#dce9e7] bg-[#f9fcfb]"}`}>
+    <div className={`min-w-0 rounded-xl border p-4 ${statusStyles?.metricCard ?? "border-[#dce9e7] bg-[#f9fcfb]"} ${className}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
-      <p className={`mt-2 text-lg font-semibold ${statusStyles?.text ?? "text-[#17343c]"}`}>{value}</p>
+      <p title={title ?? value} className={`mt-2 break-words text-lg font-semibold leading-6 ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}>
+        {value}
+      </p>
       {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#6f8584]">{detail}</p> : null}
     </div>
   );
@@ -1432,6 +1455,10 @@ function recommendedAction(status: string) {
   if (status === "Needs Review") return "Clarify documentation before submission.";
   if (status === "High Risk") return "Do not submit until billing conflicts or documentation gaps are resolved.";
   return "Run analysis to generate a recommended action.";
+}
+
+function hasSuggestedFixes(report: AnalysisReport | null) {
+  return Boolean(report?.audit_findings.some((finding) => finding.category !== "clean_claim"));
 }
 
 function containsLikelyIdentifier(text: string) {
