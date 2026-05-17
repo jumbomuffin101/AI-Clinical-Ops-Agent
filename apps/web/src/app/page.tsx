@@ -431,7 +431,7 @@ export default function Home() {
             onSubmit={submitNote}
             onClear={clearReport}
             hasReport={Boolean(visibleReport) || analysisStarted}
-            submitLabel={visibleReport ? "Reanalyze Updated Note" : "Analyze Note for Billing"}
+            submitLabel={visibleReport ? "Reanalyze Updated Note" : "Start Review"}
             identifierWarning={identifierWarning}
           />
 
@@ -515,7 +515,7 @@ function InputPanel({
         <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#789093]">Step 1</p>
         <h2 className="mt-1 text-xl font-semibold text-[#17343c]">Note Input</h2>
         <p className="mt-2 text-sm leading-6 text-[#607678]">
-          Use an example note or paste your own synthetic note. The system will identify the procedure, flag documentation risks, and suggest what a billing reviewer should check next.
+          Use an example note or paste your own synthetic note. The system will identify the procedure, flag documentation risks, and suggest what a reviewer should check next.
         </p>
       </div>
 
@@ -582,7 +582,7 @@ function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; 
     "Identifying procedures",
     "Checking note structure",
     "Reviewing documentation risks",
-    "Looking for billing-code support",
+    "Reviewing coding support",
     "Preparing reviewer next steps",
   ];
 
@@ -602,7 +602,7 @@ function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; 
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#2d7772]">Step 2</p>
           <h2 className="mt-1 text-xl font-semibold text-[#17343c]">{loading ? "Analyzing note" : complete ? "Analysis completed" : "Analysis ready"}</h2>
-          <p className="mt-2 text-sm leading-6 text-[#607678]">Simulating how a billing reviewer checks procedure clarity and documentation risk.</p>
+          <p className="mt-2 text-sm leading-6 text-[#607678]">Simulating how a clinical operations reviewer checks procedure clarity and documentation risk.</p>
         </div>
         <StatusBadge status={loading ? "Running" : "Ready"} />
       </div>
@@ -644,7 +644,7 @@ function RevisionImpactCard({ impact }: { impact: RevisionImpact | null }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#607a73]">Revision Impact</p>
           <h2 className="mt-1 text-xl font-semibold text-[#1f2d33]">Updated note comparison</h2>
-          <p className="mt-2 text-sm leading-6 text-[#667774]">Shows how the revised documentation changed billing readiness and audit risk.</p>
+          <p className="mt-2 text-sm leading-6 text-[#667774]">Shows how the revised documentation changed review readiness and audit risk.</p>
         </div>
         <StatusBadge status={impact.newClaimStatus ?? "Updated"} />
       </div>
@@ -731,7 +731,7 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#789093]">Step 3</p>
           <h2 className="mt-1 text-xl font-semibold text-[#17343c]">Review Summary</h2>
           <p className="mt-2 text-sm leading-6 text-[#607678]">
-            Status-first billing review guidance for a human reviewer. This is not a final coding decision.
+            Status-first clinical operations review for a human reviewer. This is not a final coding decision.
           </p>
           {report ? (
             <div className="mt-3 rounded-xl border border-[#dce9e7] bg-[#f7fbfa] px-4 py-3 text-xs leading-5 text-[#607678]">
@@ -744,18 +744,18 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
       {report ? (
         <>
-          <div className="mt-6 grid gap-4 md:grid-cols-6 xl:grid-cols-12">
-            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
-            <SummaryMetric className="md:col-span-4 xl:col-span-4" label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
-            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Main Issue" value={reviewMainIssue(report)} clamp="" />
-            <SummaryMetric className="md:col-span-4 xl:col-span-4" label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
+          <div className="mt-6 grid gap-4 md:grid-cols-[minmax(120px,1fr)_minmax(220px,2fr)] xl:grid-cols-[minmax(120px,1fr)_minmax(240px,2fr)_minmax(180px,1.5fr)_minmax(260px,2fr)]">
+            <SummaryMetric label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
+            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
+            <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} clamp="" />
+            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
           </div>
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Billing code</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Coding Recommendation</p>
             <p className="mt-2 text-base font-semibold text-[#17343c]">{billingCodeLabel(report)}</p>
             {!meaningfulCptCandidate(report) ? (
               <p className="mt-2 text-sm leading-6 text-[#586b69]">
-                The system identified the procedure, but the local review library does not contain a confident billing-code match.
+                The system identified the procedure, but coder confirmation is needed before selecting a CPT.
               </p>
             ) : null}
           </div>
@@ -774,14 +774,14 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 function CptCandidates({ report }: { report: AnalysisReport | null }) {
   const meaningfulCandidates = (report?.cpt_candidates ?? []).filter(isMeaningfulCpt);
   return (
-    <SectionCard title="Billing Code Details" explainer="Shows billing-code candidates only when the local review library has enough support to make them useful.">
+    <SectionCard title="Coding Recommendation Details" explainer="Shows CPT candidates only when the local review library has enough support to make them useful.">
       {report ? (
         meaningfulCandidates.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b border-[#e4ddd2] text-xs uppercase tracking-[0.08em] text-[#7a8a88]">
-                  <th className="py-3 pr-4">Billing code</th>
+                  <th className="py-3 pr-4">Suggested code</th>
                   <th className="py-3 pr-4">What it represents</th>
                   <th className="py-3 pr-4">Review tier</th>
                   <th className="py-3 pr-4">Modifier</th>
@@ -804,14 +804,14 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
           </div>
         ) : (
           <div className="rounded-xl border border-[#ead8c0] bg-[#fbf2e6] p-4">
-            <p className="font-semibold text-[#7a5428]">Billing code: Review needed</p>
+            <p className="font-semibold text-[#7a5428]">Coding recommendation: Coder review needed</p>
             <p className="mt-2 text-sm leading-6 text-[#776653]">
-              The system identified the procedure, but the local review library does not contain a confident billing-code match.
+              The system identified the procedure, but coder confirmation is needed before selecting a CPT.
             </p>
           </div>
         )
       ) : (
-        <FriendlyEmpty title="Billing code details will appear after analysis." text="Unsupported codes are hidden from the main summary so they do not look like recommendations." />
+        <FriendlyEmpty title="Coding recommendation details will appear after analysis." text="Unsupported codes are hidden from the main summary so they do not look like recommendations." />
       )}
     </SectionCard>
   );
@@ -852,7 +852,7 @@ function MoreDetails({
       </details>
 
       <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Billing code details</summary>
+        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Coding recommendation details</summary>
         <div className="mt-4">
           <CptCandidates report={report} />
         </div>
@@ -1017,7 +1017,7 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
           ))}
         </div>
       ) : (
-        <FriendlyEmpty title="No billing risks yet." text="After analysis, missing details, ambiguity, or billing-review concerns will be listed here." />
+        <FriendlyEmpty title="No review risks yet." text="After analysis, missing details, ambiguity, or clinical operations review concerns will be listed here." />
       )}
     </SectionCard>
   );
@@ -1028,7 +1028,7 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
   return (
     <SectionCard
       title="Suggested Fixes"
-      explainer="Practical documentation changes that would help a billing team review the note more confidently."
+      explainer="Practical documentation changes that would help a reviewer assess the note more confidently."
     >
       {report ? (
         findings.length ? (
@@ -1052,7 +1052,7 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
         ) : (
           <div className="rounded-xl border border-[#c4dad2] bg-[#edf6f2] p-4">
             <p className="font-semibold text-[#245c52]">No documentation gaps were flagged by the local review checks.</p>
-            <p className="mt-2 text-sm leading-6 text-[#586b69]">A billing team would still perform standard human validation before submission.</p>
+            <p className="mt-2 text-sm leading-6 text-[#586b69]">A reviewer would still perform standard human validation before submission.</p>
           </div>
         )
       ) : (
@@ -1065,12 +1065,33 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
 function suggestedFixFindings(report: AnalysisReport | null) {
   if (!report) return [];
   const status = displayReviewStatus(report);
-  return report.audit_findings.filter((finding) => {
-    if (finding.category === "clean_claim") return false;
-    if (status === "Ready") return finding.severity === "high" || finding.severity === "medium";
-    if (status === "Needs Review") return finding.severity !== "info";
-    return finding.severity === "high" || finding.severity === "medium";
-  });
+  const limit = status === "High Risk" ? 4 : status === "Needs Review" ? 3 : 0;
+  if (limit === 0) {
+    return report.audit_findings.filter((finding) => finding.category !== "clean_claim" && finding.severity === "high").slice(0, 1);
+  }
+  return report.audit_findings
+    .filter((finding) => {
+      if (finding.category === "clean_claim") return false;
+      if (status === "Needs Review") return finding.severity !== "info";
+      return finding.severity === "high" || finding.severity === "medium";
+    })
+    .sort((left, right) => fixPriority(right, report) - fixPriority(left, report))
+    .slice(0, limit);
+}
+
+function fixPriority(finding: AuditFinding, report: AnalysisReport) {
+  const severity = finding.severity === "high" ? 40 : finding.severity === "medium" ? 25 : finding.severity === "low" ? 10 : 0;
+  const specific = isSpecificFix(finding, report) ? 20 : 0;
+  const actionable = (finding.suggested_action || finding.documentation_improvement || improvementForFinding(finding, report)).length > 24 ? 10 : 0;
+  const genericPenalty = ["ai_documentation_gap", "ai_audit_concern"].includes(finding.category) ? -8 : 0;
+  return severity + specific + actionable + genericPenalty;
+}
+
+function isSpecificFix(finding: AuditFinding, report: AnalysisReport) {
+  if (finding.category === "missing_laterality" || finding.category === "bundling_conflict") return true;
+  if (isGiSurgeryReview(report) && ["low_confidence", "unsupported_code"].includes(finding.category)) return true;
+  const text = `${finding.title ?? ""} ${finding.message} ${finding.explanation ?? ""} ${finding.suggested_action ?? ""}`.toLowerCase();
+  return ["laterality", "cholangiogram", "anastomosis", "resection", "bowel", "additional procedure"].some((term) => text.includes(term));
 }
 
 function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
@@ -1107,8 +1128,8 @@ function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
           ]}
         />
         <InsightBlock title="Procedures detected" body="Procedures or operative actions the AI layer pulled from the note." details={detectedProcedureItems(report)} />
-        <InsightBlock title="Documentation gaps" body="Details a billing reviewer may need before selecting or submitting a code." details={report.report.ai_documentation_gaps ?? []} />
-        <InsightBlock title="Suggested clarification questions" body="Questions to ask before relying on the note for billing review." details={report.report.ai_suggested_clarifications ?? []} />
+        <InsightBlock title="Documentation gaps" body="Details a reviewer may need before selecting or submitting a code." details={report.report.ai_documentation_gaps ?? []} />
+        <InsightBlock title="Suggested clarification questions" body="Questions to ask before relying on the note for clinical operations review." details={report.report.ai_suggested_clarifications ?? []} />
       </div>
     </SectionCard>
   );
@@ -1178,7 +1199,7 @@ function ParsedNoteStructure({ report }: { report: AnalysisReport | null }) {
           </div>
         </div>
       ) : (
-        <FriendlyEmpty title="Parsed note structure will appear after analysis." text="The parser will show detected sections, anatomy, laterality, and missing critical sections before the billing review output." />
+        <FriendlyEmpty title="Parsed note structure will appear after analysis." text="The parser will show detected sections, anatomy, laterality, and missing critical sections before the review output." />
       )}
     </SectionCard>
   );
@@ -1286,21 +1307,14 @@ function readableCategory(value: string) {
 }
 
 function recommendedAction(status: string) {
-  if (status === "Ready") return "Proceed with standard billing review.";
+  if (status === "Ready") return "Proceed with standard clinical operations review.";
   if (status === "Needs Review") return "Clarify documentation before submission.";
   if (status === "High Risk") return "Do not submit until billing conflicts or documentation gaps are resolved.";
   return "Run analysis to generate a recommended action.";
 }
 
 function hasSuggestedFixes(report: AnalysisReport | null) {
-  if (!report) return false;
-  const status = displayReviewStatus(report);
-  return report.audit_findings.some((finding) => {
-    if (finding.category === "clean_claim") return false;
-    if (status === "Ready") return finding.severity === "high" || finding.severity === "medium";
-    if (status === "Needs Review") return finding.severity !== "info";
-    return finding.severity === "high" || finding.severity === "medium";
-  });
+  return suggestedFixFindings(report).length > 0;
 }
 
 function containsLikelyIdentifier(text: string) {
@@ -1326,12 +1340,12 @@ function meaningfulCptCandidate(report: AnalysisReport) {
 
 function billingCodeLabel(report: AnalysisReport) {
   const candidate = meaningfulCptCandidate(report);
-  if (!candidate) return "CPT review needed";
-  return `Primary billing code: ${candidate.code}`;
+  if (!candidate) return "Coder review needed";
+  return `Suggested code: ${candidate.code}`;
 }
 
 function historyCodeLabel(code?: string | null) {
-  if (!code || code === "99999") return "Review needed";
+  if (!code || code === "99999") return "Coder review needed";
   return code;
 }
 
@@ -1351,7 +1365,7 @@ function reviewMetadata(report: AnalysisReport) {
 function detectedProcedureLabel(report: AnalysisReport) {
   if (report.report.ai_procedure_summary) return cleanProcedureSummary(report.report.ai_procedure_summary);
   const names = report.extracted_procedures.map((procedure) => procedure.name).filter((name) => name !== "Unclassified operative procedure");
-  return names.length ? names.join(", ") : "Procedure identified, billing review needed";
+  return names.length ? names.join(", ") : "Procedure identified, coder confirmation recommended";
 }
 
 function detectedProcedureItems(report: AnalysisReport) {
@@ -1367,15 +1381,53 @@ function cleanProcedureSummary(value: string) {
   return value.replace(/^AI identified:\s*/i, "").trim();
 }
 
+function aiReviewText(report: AnalysisReport) {
+  return [
+    report.report.ai_procedure_summary ?? "",
+    report.report.ai_reasoning_summary ?? "",
+    report.report.ai_probable_operative_intent ?? "",
+    report.report.ai_likely_procedure_family ?? "",
+    report.structured_note?.detected_anatomy ?? "",
+    report.structured_note?.raw_text ?? "",
+    ...(report.report.ai_supporting_texts ?? []),
+    ...report.extracted_procedures.map((procedure) => `${procedure.name} ${procedure.body_site ?? ""} ${procedure.evidence ?? ""}`),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function isGiSurgeryReview(report: AnalysisReport) {
+  const text = aiReviewText(report);
+  return report.report.ai_likely_procedure_family === "GI surgery" || ["bowel", "ileum", "ileal", "anastomosis", "laparotomy", "colectomy"].some((term) => text.includes(term));
+}
+
+function keyAnatomyLabel(report: AnalysisReport) {
+  const text = aiReviewText(report);
+  if (text.includes("distal ileum")) return "the distal ileum";
+  if (text.includes("ileum") || text.includes("ileal")) return "the ileum";
+  if (text.includes("small bowel") || text.includes("small intestine")) return "the small bowel";
+  if (text.includes("colon") || text.includes("colectomy")) return "the colon";
+  return report.structured_note?.detected_anatomy ?? "the gastrointestinal tract";
+}
+
+function keyOperativeDetails(report: AnalysisReport) {
+  const text = aiReviewText(report);
+  const details = [];
+  if (text.includes("perforation")) details.push("bowel perforation");
+  if (text.includes("stapled") && text.includes("anastom")) details.push("stapled anastomosis");
+  else if (text.includes("anastom")) details.push("anastomosis");
+  return details.join(" and ");
+}
+
 function nextStepLabel(report: AnalysisReport) {
   const issue = reviewMainIssue(report);
   if (!meaningfulCptCandidate(report)) {
-    if (report.report.ai_likely_procedure_family === "GI surgery") {
-      return "Confirm the bowel segment, resection extent, anastomosis type, additional procedures, and appropriate bowel resection CPT with a human coder.";
+    if (isGiSurgeryReview(report)) {
+      return "Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection.";
     }
-    return "Confirm the correct billing code and documentation details.";
+    return "Confirm operative details and final CPT selection with a human coder.";
   }
-  if (issue === "Missing laterality") return "Clarify left or right side before billing review.";
+  if (issue === "Missing laterality") return "Clarify left or right side before clinical operations review.";
   if (issue === "Bundling conflict") return "Confirm which service should be billed before submission.";
   if (issue === "Ambiguous documentation") return "Clarify the procedure intent and operative extent.";
   return report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status);
@@ -1400,17 +1452,20 @@ function mainIssue(findings: AuditFinding[]) {
   if (categories.includes("bundling_conflict")) return "Bundling conflict";
   if (categories.includes("missing_laterality")) return "Missing laterality";
   if (categories.includes("low_confidence")) return "Ambiguous documentation";
-  if (categories.includes("unsupported_code")) return "Billing code review needed";
+  if (categories.includes("unsupported_code")) return "Coder review needed";
   return "No major issues";
 }
 
 function reviewIssueLabel(issue: string) {
-  if (issue === "Unsupported procedure") return "Billing code review needed";
+  if (issue === "Unsupported procedure" || issue === "Billing code review needed") return "Coder review needed";
   return issue;
 }
 
 function reviewMainIssue(report: AnalysisReport) {
-  if (!meaningfulCptCandidate(report)) return "Billing code review needed";
+  if (!meaningfulCptCandidate(report)) {
+    if (isGiSurgeryReview(report)) return "Procedure extent requires coding review";
+    return "Coder review needed";
+  }
   return reviewIssueLabel(report.report.main_issue ?? mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info")));
 }
 
@@ -1420,10 +1475,16 @@ function reportNarrative(report: AnalysisReport) {
   const procedure = detectedProcedureLabel(report).toLowerCase();
   const family = report.report.ai_likely_procedure_family;
   if (!meaningfulCptCandidate(report)) {
-    return `The note describes ${procedure}. ${family ? `The app identified this as a ${family} case, but ` : "However, "}the local review library does not contain enough billing rules to assign a confident CPT. A billing reviewer should confirm the operative extent and appropriate code.`;
+    if (isGiSurgeryReview(report)) {
+      const anatomy = keyAnatomyLabel(report);
+      const intent = report.report.ai_probable_operative_intent || "operative management";
+      const operativeDetails = keyOperativeDetails(report);
+      return `The note describes ${procedure}. The app identified this as a ${family ?? "GI surgery"} case involving ${anatomy}. Operative intent appears to be ${intent}${operativeDetails ? `, with ${operativeDetails}` : ""}. Coder confirmation is needed because bowel surgery coding depends on resection extent, anastomosis details, additional procedures, and final CPT selection.`;
+    }
+    return `The note describes ${procedure}. The local review library does not contain enough support to assign a confident CPT. Coder confirmation is recommended before a coding decision.`;
   }
   if (displayReviewStatus(report) === "Ready") {
-    return `The note is marked Ready for standard billing review because the procedure is documented clearly and the review checks did not find major billing risks. Recommended next step: ${action}`;
+    return `The note is marked Ready for standard clinical operations review because the procedure is documented clearly and the review checks did not find major risks. Recommended next step: ${action}`;
   }
   if (issue === "Missing laterality") {
     return `The note needs review because laterality was not clearly documented. Clarifying whether the procedure was performed on the left or right side would reduce modifier ambiguity.`;
@@ -1431,38 +1492,41 @@ function reportNarrative(report: AnalysisReport) {
   if (issue === "Bundling conflict") {
     return `The note is high risk because the documentation produced a possible bundled-code conflict. A human reviewer should decide which service should be billed.`;
   }
-  return `The note is marked ${displayReviewStatus(report)} because the billing review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
+  return `The note is marked ${displayReviewStatus(report)} because the review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
 }
 
 function findingTitle(category: string) {
   if (category === "bundling_conflict") return "Bundling conflict detected";
   if (category === "low_confidence") return "Low confidence coding";
   if (category === "missing_laterality") return "Missing laterality";
-  if (category === "unsupported_code") return "Billing code review needed";
+  if (category === "unsupported_code") return "Coder review needed";
   if (category === "clean_claim") return "No major billing risks found";
   return readableCategory(category);
 }
 
 function improvementForFinding(finding: AuditFinding, report?: AnalysisReport | null) {
   if (finding.category === "missing_laterality") return "Document whether the procedure was performed on the left or right side.";
+  if (finding.category === "low_confidence" && report && isGiSurgeryReview(report)) {
+    return "Confirm bowel resection extent, anastomosis details, whether additional procedures were performed, and final CPT selection.";
+  }
   if (finding.category === "low_confidence") return "Clarify the exact procedure performed and whether it was diagnostic or therapeutic.";
   if (finding.category === "bundling_conflict") return "Review whether both procedures should be billed together or select the single supported definitive code.";
-  if (finding.category === "unsupported_code" && report?.report.ai_likely_procedure_family === "GI surgery") {
-    return "Confirm the bowel segment, extent or length of resection, anastomosis type, whether additional procedures were performed, and the appropriate bowel resection CPT with a human coder.";
+  if (finding.category === "unsupported_code" && report && isGiSurgeryReview(report)) {
+    return "Confirm bowel resection extent, anastomosis details, whether additional procedures were performed, and final CPT selection.";
   }
   if (finding.category === "unsupported_code") return "Confirm the correct billable procedure and supporting reference before coding.";
   return finding.suggested_action ?? finding.recommendation;
 }
 
 function whyImprovementMatters(finding: AuditFinding, report?: AnalysisReport | null) {
-  if (finding.category === "missing_laterality") return "Billing teams need laterality to select LT or RT modifiers and avoid payer follow-up.";
+  if (finding.category === "missing_laterality") return "Reviewers need laterality to select LT or RT modifiers and avoid payer follow-up.";
   if (finding.category === "low_confidence") return "Clear procedure intent improves CPT selection, coding confidence, and reimbursement predictability.";
   if (finding.category === "bundling_conflict") return "Bundled services may be denied or create billing compliance risk if both codes are submitted.";
-  if (finding.category === "unsupported_code" && report?.report.ai_likely_procedure_family === "GI surgery") {
+  if (["unsupported_code", "low_confidence"].includes(finding.category) && report && isGiSurgeryReview(report)) {
     return "Bowel surgery coding depends on the segment treated, resection extent, anastomosis, and whether any additional services are separately supported.";
   }
-  if (finding.category === "unsupported_code") return "Unsupported codes create denial and compliance risk during billing review.";
-  return "Cleaner documentation helps billing reviewers make a more confident coding decision.";
+  if (finding.category === "unsupported_code") return "Unsupported codes create denial and compliance risk during review.";
+  return "Cleaner documentation helps reviewers make a more confident coding decision.";
 }
 
 function compareReports(previous: AnalysisReport, current: AnalysisReport): RevisionImpact {

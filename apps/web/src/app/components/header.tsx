@@ -8,7 +8,7 @@ export function ProductHeader({ onStartReview }: { onStartReview: () => void }) 
           <div>
             <p className="text-sm font-semibold text-[#2d7772]">Clinical operations review</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#17343c] md:text-5xl">AI Clinical Ops Agent</h1>
-            <p className="mt-3 text-xl font-medium text-[#31545b]">Operative note review for billing teams.</p>
+            <p className="mt-3 text-xl font-medium text-[#31545b]">Operative note review for clinical operations teams.</p>
             <p className="mt-4 max-w-3xl text-base leading-7 text-[#5d7375]">
               Identify procedures, surface documentation risks, and prepare coder review next steps from operative notes.
             </p>
@@ -20,10 +20,10 @@ export function ProductHeader({ onStartReview }: { onStartReview: () => void }) 
               >
                 Start review
               </button>
-              <p className="text-sm text-[#6f8584]">Human review required before billing decisions.</p>
+              <p className="text-sm text-[#6f8584]">Human review required before coding or submission decisions.</p>
             </div>
             <p className="mt-5 max-w-3xl rounded-2xl border border-[#dce9e7] bg-white/65 px-4 py-3 text-sm leading-6 text-[#617879]">
-              Use only de-identified or synthetic notes. Human review is required before billing decisions.
+              Use only de-identified or synthetic notes. Human review is required before coding or submission decisions.
             </p>
           </div>
           <div className="rounded-3xl border border-[#d8e8e4] bg-white/78 p-6 shadow-[0_20px_48px_rgba(49,84,91,0.08)]">
@@ -38,8 +38,8 @@ export function ProductHeader({ onStartReview }: { onStartReview: () => void }) 
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           <ValueCard title="Identify the procedure" text="Summarize what operation the note appears to describe." />
-          <ValueCard title="Flag documentation risks" text="Surface missing details, ambiguity, and billing-review concerns." />
-          <ValueCard title="Prepare reviewer next steps" text="Explain what a human coder or billing reviewer should verify." />
+          <ValueCard title="Flag documentation risks" text="Surface missing details, ambiguity, and review concerns." />
+          <ValueCard title="Prepare reviewer next steps" text="Explain what a human coder or operations reviewer should verify." />
         </div>
       </div>
     </header>
