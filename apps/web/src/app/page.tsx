@@ -842,59 +842,57 @@ function MoreDetails({
   sections: { parsed: boolean; history: boolean; evaluation: boolean; revision: boolean };
   onToggleSection: (section: "parsed" | "history" | "evaluation" | "revision") => void;
 }) {
+  const [openSections, setOpenSections] = useState({
+    ai: false,
+    coding: false,
+    risks: false,
+    metadata: false,
+  });
+  const toggleLocalSection = (section: keyof typeof openSections) => {
+    setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  };
+
   return (
     <div className="space-y-3">
-      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">AI interpretation details</summary>
-        <div className="mt-4">
-          <AIReviewInsights report={report} />
-        </div>
-      </details>
+      <DetailAccordion title="AI interpretation details" open={openSections.ai} onToggle={() => toggleLocalSection("ai")}>
+        <AIReviewInsights report={report} />
+      </DetailAccordion>
 
-      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Coding recommendation details</summary>
-        <div className="mt-4">
-          <CptCandidates report={report} />
-        </div>
-      </details>
+      <DetailAccordion title="Coding recommendation details" open={openSections.coding} onToggle={() => toggleLocalSection("coding")}>
+        <CptCandidates report={report} />
+      </DetailAccordion>
 
-      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Billing risks</summary>
-        <div className="mt-4">
-          <AuditFindings report={report} />
-        </div>
-      </details>
+      <DetailAccordion title="Billing risks" open={openSections.risks} onToggle={() => toggleLocalSection("risks")}>
+        <AuditFindings report={report} />
+      </DetailAccordion>
 
-      <DetailSubsection title="Parsed note structure" open={sections.parsed} onToggle={() => onToggleSection("parsed")}>
+      <DetailAccordion title="Parsed note structure" open={sections.parsed} onToggle={() => onToggleSection("parsed")}>
         <ParsedNoteStructure report={report} />
-      </DetailSubsection>
+      </DetailAccordion>
 
-      <DetailSubsection title="Recent reviews" open={sections.history} onToggle={() => onToggleSection("history")}>
+      <DetailAccordion title="Recent reviews" open={sections.history} onToggle={() => onToggleSection("history")}>
         <RecentAnalyses history={history} loading={historyLoading} onLoad={onLoadAnalysis} />
-      </DetailSubsection>
+      </DetailAccordion>
 
-      <DetailSubsection title="System evaluation" open={sections.evaluation} onToggle={() => onToggleSection("evaluation")}>
+      <DetailAccordion title="System evaluation" open={sections.evaluation} onToggle={() => onToggleSection("evaluation")}>
         <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
-      </DetailSubsection>
+      </DetailAccordion>
 
-      <DetailSubsection title="Revision history" open={sections.revision} onToggle={() => onToggleSection("revision")}>
+      <DetailAccordion title="Revision history" open={sections.revision} onToggle={() => onToggleSection("revision")}>
         {revisionImpact ? <RevisionImpactCard impact={revisionImpact} /> : null}
         <div className={revisionImpact ? "mt-4" : undefined}>
           <RevisionHistoryPanel items={revisionHistory} />
         </div>
-      </DetailSubsection>
+      </DetailAccordion>
 
-      <details className="rounded-2xl border border-[#dce9e7] bg-white/70 p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-[#17343c]">Technical analysis metadata</summary>
-        <div className="mt-4">
-          <TechnicalMetadata rows={reviewMetadata} />
-        </div>
-      </details>
+      <DetailAccordion title="Technical analysis metadata" open={openSections.metadata} onToggle={() => toggleLocalSection("metadata")}>
+        <TechnicalMetadata rows={reviewMetadata} />
+      </DetailAccordion>
     </div>
   );
 }
 
-function DetailSubsection({
+function DetailAccordion({
   title,
   open,
   onToggle,
@@ -906,12 +904,24 @@ function DetailSubsection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-[#dce9e7] bg-white/70">
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4 text-left text-sm font-semibold text-[#17343c]">
+    <div className="overflow-hidden rounded-2xl border border-[#dce9e7] bg-white/70">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-h-14 w-full items-center justify-between gap-4 px-4 py-4 text-left text-sm font-semibold text-[#17343c] transition hover:bg-[#f4fbf9]"
+        aria-expanded={open}
+      >
         <span>{title}</span>
-        <span className="text-lg leading-none text-[#6f8584]">{open ? "-" : "+"}</span>
+        <span
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#cfe4df] bg-[#edf7f5] text-sm font-semibold leading-none text-[#206b63] transition-transform ${
+            open ? "rotate-90" : ""
+          }`}
+          aria-hidden="true"
+        >
+          &gt;
+        </span>
       </button>
-      {open ? <div className="border-t border-[#e7efed] p-4">{children}</div> : null}
+      {open ? <div className="border-t border-[#e7efed] bg-[#fbfefd] p-4">{children}</div> : null}
     </div>
   );
 }
