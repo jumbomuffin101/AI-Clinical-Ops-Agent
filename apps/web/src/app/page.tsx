@@ -744,11 +744,11 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
       {report ? (
         <>
-          <div className="mt-6 grid gap-4 md:grid-cols-[minmax(120px,1fr)_minmax(220px,2fr)] xl:grid-cols-[minmax(120px,1fr)_minmax(240px,2fr)_minmax(180px,1.5fr)_minmax(260px,2fr)]">
+          <div className="mt-6 grid min-w-0 grid-cols-1 auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-4">
             <SummaryMetric label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
-            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
-            <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} clamp="" />
-            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
+            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="line-clamp-4" />
+            <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} clamp="line-clamp-3" />
+            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="line-clamp-5" />
           </div>
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Coding Recommendation</p>

@@ -64,9 +64,12 @@ export function SummaryMetric({
 }) {
   const statusStyles = status ? getStatusStyles(status) : null;
   return (
-    <div className={`min-w-0 rounded-xl border p-4 ${statusStyles?.metricCard ?? "border-[#dce9e7] bg-[#f9fcfb]"} ${className}`}>
+    <div className={`flex h-full min-w-0 flex-col rounded-xl border p-4 ${statusStyles?.metricCard ?? "border-[#dce9e7] bg-[#f9fcfb]"} ${className}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
-      <p title={title ?? value} className={`mt-2 whitespace-normal break-normal text-lg font-semibold leading-6 ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}>
+      <p
+        title={title ?? value}
+        className={`mt-2 min-w-0 whitespace-normal break-words [word-break:break-word] text-lg font-semibold leading-6 ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}
+      >
         {value}
       </p>
       {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#6f8584]">{detail}</p> : null}
