@@ -241,9 +241,11 @@ def test_invalid_note_input_returns_readable_error(client):
     [
         "MRN: 123456",
         "DOB: 01/02/1970",
+        "123-45-6789",
         "test.patient@example.com",
         "555-123-4567",
         "Patient Name: Jane Smith",
+        "Name: Jane Smith",
     ],
 )
 def test_identifier_containing_note_is_rejected(client, identifier_text):
@@ -267,6 +269,24 @@ def test_identifier_in_note_title_is_rejected(client):
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "Potential patient identifiers detected. Please remove identifiers before analysis."
     assert client.get("/api/analyses").json() == []
+
+
+def test_identifier_rejection_happens_before_analysis_service(client, monkeypatch):
+    from app.routes import notes
+
+    called = {"value": False}
+
+    def fail_if_called(*args, **kwargs):
+        called["value"] = True
+        raise AssertionError("analysis service should not run for identifier-containing input")
+
+    monkeypatch.setattr(notes.service, "create_analysis", fail_if_called)
+    note = "MRN: 123456. Procedure: Laparoscopic appendectomy. Operative note: Appendix was removed laparoscopically."
+
+    response = client.post("/api/notes", json={"title": "Identifier note", "note_text": note})
+
+    assert response.status_code == 400
+    assert called["value"] is False
 
 
 def test_missing_analysis_returns_404(client):

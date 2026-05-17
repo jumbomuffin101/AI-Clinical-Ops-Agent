@@ -66,7 +66,7 @@ export function SummaryMetric({
   return (
     <div className={`min-w-0 rounded-xl border p-4 ${statusStyles?.metricCard ?? "border-[#dce9e7] bg-[#f9fcfb]"} ${className}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
-      <p title={title ?? value} className={`mt-2 break-words text-lg font-semibold leading-6 ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}>
+      <p title={title ?? value} className={`mt-2 whitespace-normal break-normal text-lg font-semibold leading-6 ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}>
         {value}
       </p>
       {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#6f8584]">{detail}</p> : null}

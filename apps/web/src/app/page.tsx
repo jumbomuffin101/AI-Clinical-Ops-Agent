@@ -285,11 +285,21 @@ export default function Home() {
   const [lastAnalyzedNote, setLastAnalyzedNote] = useState<string | null>(null);
   const inputRef = useRef<HTMLDivElement | null>(null);
   const identifierWarning = containsLikelyIdentifier(`${selected.title}\n${noteText}`) ? IDENTIFIER_WARNING : null;
+  const visibleReport = identifierWarning ? null : report;
 
   useEffect(() => {
     void loadHistory();
     void loadEvaluation();
   }, []);
+
+  useEffect(() => {
+    if (!identifierWarning) return;
+    setReport(null);
+    setAnalysisStarted(false);
+    setRevisionImpact(null);
+    setLastAnalyzedNote(null);
+    setShowBillingDetails(false);
+  }, [identifierWarning]);
 
   function chooseExample(exampleId: string) {
     const example = examples.find((item) => item.id === exampleId) ?? examples[0];
@@ -420,29 +430,35 @@ export default function Home() {
             onChangeNote={setNoteText}
             onSubmit={submitNote}
             onClear={clearReport}
-            hasReport={Boolean(report) || analysisStarted}
-            submitLabel={report ? "Reanalyze Updated Note" : "Analyze Note for Billing"}
+            hasReport={Boolean(visibleReport) || analysisStarted}
+            submitLabel={visibleReport ? "Reanalyze Updated Note" : "Analyze Note for Billing"}
             identifierWarning={identifierWarning}
           />
 
           <div className="space-y-5">
-            <AnalysisStagePanel visible={analysisStarted || Boolean(report)} loading={loading} complete={Boolean(report)} />
-            <ResultSummary report={report} loading={loading} />
-            {hasSuggestedFixes(report) ? <ImprovementSuggestions report={report} /> : null}
+            {identifierWarning ? (
+              <IdentifierBlockedPanel />
+            ) : (
+              <>
+                <AnalysisStagePanel visible={analysisStarted || Boolean(visibleReport)} loading={loading} complete={Boolean(visibleReport)} />
+                <ResultSummary report={visibleReport} loading={loading} />
+                {hasSuggestedFixes(visibleReport) ? <ImprovementSuggestions report={visibleReport} /> : null}
+              </>
+            )}
           </div>
         </div>
 
-        <div className="mt-6 space-y-5">
+        {!identifierWarning ? <div className="mt-6 space-y-5">
           <Disclosure title="View detailed review" open={showBillingDetails} onToggle={() => setShowBillingDetails((value) => !value)}>
             <MoreDetails
-              report={report}
+              report={visibleReport}
               evaluation={evaluation}
               evaluationLoading={evaluationLoading}
               history={history}
               historyLoading={historyLoading}
               revisionImpact={revisionImpact}
               revisionHistory={revisionHistory}
-              reviewMetadata={report ? reviewMetadata(report) : null}
+              reviewMetadata={visibleReport ? reviewMetadata(visibleReport) : null}
               onLoadAnalysis={loadAnalysis}
               sections={{
                 parsed: showParsedStructure,
@@ -458,7 +474,7 @@ export default function Home() {
               }}
             />
           </Disclosure>
-        </div>
+        </div> : null}
       </section>
     </main>
   );
@@ -608,6 +624,18 @@ function AnalysisStagePanel({ visible, loading, complete }: { visible: boolean; 
   );
 }
 
+function IdentifierBlockedPanel() {
+  return (
+    <section className="rounded-2xl border border-[#efc2ba] bg-[#fffafa] p-6 shadow-[0_14px_36px_rgba(159,47,36,0.06)]">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9f2f24]">Analysis unavailable</p>
+      <h2 className="mt-2 text-xl font-semibold text-[#17343c]">Remove patient identifiers before continuing.</h2>
+      <p className="mt-3 text-sm leading-6 text-[#6f5f5d]">
+        The current note appears to contain patient-identifiable information. Remove MRNs, DOBs, names, contact information, or other identifiers before analysis.
+      </p>
+    </section>
+  );
+}
+
 function RevisionImpactCard({ impact }: { impact: RevisionImpact | null }) {
   if (!impact) return null;
   return (
@@ -718,9 +746,9 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
         <>
           <div className="mt-6 grid gap-4 md:grid-cols-6 xl:grid-cols-12">
             <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
-            <SummaryMetric className="md:col-span-4 xl:col-span-4" label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="line-clamp-3" />
-            <SummaryMetric className="md:col-span-3 xl:col-span-3" label="Main Issue" value={reviewMainIssue(report)} />
-            <SummaryMetric className="md:col-span-3 xl:col-span-3" label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="line-clamp-3" />
+            <SummaryMetric className="md:col-span-4 xl:col-span-4" label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
+            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Main Issue" value={reviewMainIssue(report)} clamp="" />
+            <SummaryMetric className="md:col-span-4 xl:col-span-4" label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
           </div>
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Billing code</p>
@@ -996,7 +1024,7 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
 }
 
 function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
-  const findings = (report?.audit_findings ?? []).filter((finding) => finding.category !== "clean_claim");
+  const findings = suggestedFixFindings(report);
   return (
     <SectionCard
       title="Suggested Fixes"
@@ -1010,15 +1038,13 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-[#34464a]">{finding.title ?? findingTitle(finding.category)}</p>
-                    <p className="mt-2 text-sm leading-6 text-[#586b69]">
-                      {finding.documentation_improvement ?? improvementForFinding(finding)}
-                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#586b69]">{improvementForFinding(finding, report)}</p>
                   </div>
                   <StatusBadge status={finding.severity === "high" ? "High Risk" : "Needs Review"} />
                 </div>
                 <div className="mt-4 rounded-lg bg-[#fffdfa] p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">Why this matters</p>
-                  <p className="mt-2 text-sm leading-6 text-[#667774]">{finding.why_it_matters ?? whyImprovementMatters(finding)}</p>
+                  <p className="mt-2 text-sm leading-6 text-[#667774]">{whyImprovementMatters(finding, report)}</p>
                 </div>
               </div>
             ))}
@@ -1034,6 +1060,17 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
       )}
     </SectionCard>
   );
+}
+
+function suggestedFixFindings(report: AnalysisReport | null) {
+  if (!report) return [];
+  const status = displayReviewStatus(report);
+  return report.audit_findings.filter((finding) => {
+    if (finding.category === "clean_claim") return false;
+    if (status === "Ready") return finding.severity === "high" || finding.severity === "medium";
+    if (status === "Needs Review") return finding.severity !== "info";
+    return finding.severity === "high" || finding.severity === "medium";
+  });
 }
 
 function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
@@ -1256,7 +1293,14 @@ function recommendedAction(status: string) {
 }
 
 function hasSuggestedFixes(report: AnalysisReport | null) {
-  return Boolean(report?.audit_findings.some((finding) => finding.category !== "clean_claim"));
+  if (!report) return false;
+  const status = displayReviewStatus(report);
+  return report.audit_findings.some((finding) => {
+    if (finding.category === "clean_claim") return false;
+    if (status === "Ready") return finding.severity === "high" || finding.severity === "medium";
+    if (status === "Needs Review") return finding.severity !== "info";
+    return finding.severity === "high" || finding.severity === "medium";
+  });
 }
 
 function containsLikelyIdentifier(text: string) {
@@ -1327,7 +1371,7 @@ function nextStepLabel(report: AnalysisReport) {
   const issue = reviewMainIssue(report);
   if (!meaningfulCptCandidate(report)) {
     if (report.report.ai_likely_procedure_family === "GI surgery") {
-      return "Confirm the correct bowel resection CPT and documentation details.";
+      return "Confirm the bowel segment, resection extent, anastomosis type, additional procedures, and appropriate bowel resection CPT with a human coder.";
     }
     return "Confirm the correct billing code and documentation details.";
   }
@@ -1399,18 +1443,24 @@ function findingTitle(category: string) {
   return readableCategory(category);
 }
 
-function improvementForFinding(finding: AuditFinding) {
+function improvementForFinding(finding: AuditFinding, report?: AnalysisReport | null) {
   if (finding.category === "missing_laterality") return "Document whether the procedure was performed on the left or right side.";
   if (finding.category === "low_confidence") return "Clarify the exact procedure performed and whether it was diagnostic or therapeutic.";
   if (finding.category === "bundling_conflict") return "Review whether both procedures should be billed together or select the single supported definitive code.";
+  if (finding.category === "unsupported_code" && report?.report.ai_likely_procedure_family === "GI surgery") {
+    return "Confirm the bowel segment, extent or length of resection, anastomosis type, whether additional procedures were performed, and the appropriate bowel resection CPT with a human coder.";
+  }
   if (finding.category === "unsupported_code") return "Confirm the correct billable procedure and supporting reference before coding.";
   return finding.suggested_action ?? finding.recommendation;
 }
 
-function whyImprovementMatters(finding: AuditFinding) {
+function whyImprovementMatters(finding: AuditFinding, report?: AnalysisReport | null) {
   if (finding.category === "missing_laterality") return "Billing teams need laterality to select LT or RT modifiers and avoid payer follow-up.";
   if (finding.category === "low_confidence") return "Clear procedure intent improves CPT selection, coding confidence, and reimbursement predictability.";
   if (finding.category === "bundling_conflict") return "Bundled services may be denied or create billing compliance risk if both codes are submitted.";
+  if (finding.category === "unsupported_code" && report?.report.ai_likely_procedure_family === "GI surgery") {
+    return "Bowel surgery coding depends on the segment treated, resection extent, anastomosis, and whether any additional services are separately supported.";
+  }
   if (finding.category === "unsupported_code") return "Unsupported codes create denial and compliance risk during billing review.";
   return "Cleaner documentation helps billing reviewers make a more confident coding decision.";
 }

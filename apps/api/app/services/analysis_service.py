@@ -551,11 +551,12 @@ class AnalysisService:
         sections = {**ai_analysis.parsed_note_sections, **deterministic.parsed_sections}
         missing_sections = [section for section in OperativeNoteParser.CRITICAL_SECTIONS if section not in sections]
         confidence = max(deterministic.parsing_confidence, 0.7 if ai_analysis.parsed_note_sections else deterministic.parsing_confidence)
+        ai_procedure_anatomy = next((procedure.anatomy for procedure in ai_analysis.detected_procedures if procedure.anatomy), None)
         return StructuredOperativeNote(
             raw_text=deterministic.raw_text,
             parsed_sections=sections,
             detected_procedure_name=deterministic.detected_procedure_name or (ai_analysis.detected_procedures[0].name if ai_analysis.detected_procedures else None),
-            detected_anatomy=deterministic.detected_anatomy or ai_analysis.anatomy,
+            detected_anatomy=deterministic.detected_anatomy or ai_analysis.anatomy or ai_procedure_anatomy,
             detected_laterality=deterministic.detected_laterality,
             missing_sections=missing_sections,
             parsing_confidence=confidence,
