@@ -1,203 +1,254 @@
-# AI Clinical Ops Agent
+# Clinical Operations Review Assistant
 
-AI Clinical Ops Agent is a full-stack healthcare operations project for reviewing operative notes before billing review. It identifies likely procedures, flags documentation risks, suggests coder confirmation steps, and keeps a clear separation between deterministic rules and optional AI-assisted interpretation.
+A documentation review system that simulates how a clinical operations or billing team evaluates operative notes before submission.
 
-The app is built for de-identified or synthetic notes only. It is not medical software and it is not billing advice. Human review is required before any billing decision.
+The application analyzes de-identified or synthetic operative notes, identifies potential documentation issues, surfaces coding-related risks, and provides structured review guidance. The goal is not to replace coders or clinical reviewers, but to support review workflows by highlighting areas that may require attention.
 
-## Why I Built This
+---
 
-I wanted to build something closer to a real healthcare workflow than a chatbot. Operative notes are messy, and small documentation gaps like missing laterality, unclear procedure intent, or bundled services can affect billing review. This project models that operational problem with a proper frontend, backend, database, migrations, tests, safety checks, and deployment path.
+## Demo Workflow
 
-## What It Does
+1. Select an example operative note or enter a custom synthetic note
+2. Run the review pipeline
+3. Detect procedures and documentation issues
+4. Generate a structured review summary
+5. Surface potential coding risks and suggested fixes
+6. Flag notes requiring human review
 
-- Accepts a de-identified or synthetic operative note
-- Parses the note into operative sections when possible
-- Identifies likely procedures and anatomy
-- Flags documentation and billing-review risks
-- Suggests practical fixes for the note
-- Shows a plain-English review summary
-- Supports optional AI-assisted interpretation for vague or unsupported notes
-- Keeps detailed metadata, evaluation, recent reviews, and revision history behind a details panel
+---
 
-## Architecture
+## Features
+
+### Operative note analysis
+- Procedure identification from operative note text
+- Detection of incomplete or ambiguous documentation
+- Structured extraction of note sections
+- Support for custom synthetic notes
+
+### Documentation review checks
+- Missing laterality detection
+- Bundling conflict detection
+- Coding confidence evaluation
+- Procedure ambiguity checks
+- Conflicting documentation detection
+- Unsupported procedure handling
+
+### Safety features
+- PHI detection and analysis blocking
+- De-identified/synthetic note enforcement
+- Prevention of stale results after blocked analyses
+
+### Review workflow support
+- Ready / Needs Review / High Risk classification
+- Suggested next actions
+- Structured coding recommendations
+- Practical documentation fixes
+- Revision history support
+- Previous review history
+
+---
+
+## Example Review Outcomes
+
+### Ready
+
+Example:
+
+- Procedure: Laparoscopic appendectomy
+- Complete findings and postoperative diagnosis
+- No significant documentation issues
+
+Output:
+
+- Status: Ready
+- Suggested code: 44970
+- Recommendation: Proceed with standard review
+
+---
+
+### Needs Review
+
+Example:
+
+- Open inguinal hernia repair without documented laterality
+
+Output:
+
+- Status: Needs Review
+- Main issue: Missing laterality
+- Recommendation: Clarify left vs right side
+
+---
+
+### High Risk
+
+Example:
+
+- Laparoscopic cholecystectomy with possible cholangiography documentation conflict
+
+Output:
+
+- Status: High Risk
+- Main issue: Potential bundled procedure conflict
+- Recommendation: Confirm supported procedure before submission
+
+---
+
+## System Architecture
 
 ```text
-Next.js review UI
-  -> FastAPI API
-  -> structured note parser
-  -> procedure extraction
-  -> CPT-style candidate rules
-  -> billing risk auditor
-  -> optional Groq AI interpretation
-  -> PostgreSQL / SQLAlchemy
-  -> review report
+User Input
+    ↓
+Note Parsing Layer
+    ↓
+Documentation Analysis Engine
+    ↓
+Risk Classification Logic
+    ↓
+Procedure Detection
+    ↓
+Coding Recommendation Engine
+    ↓
+Review Summary + Suggested Fixes
 ```
 
-The deterministic pipeline runs first. AI assistance is only used when the rules need help interpreting free text, such as an unsupported or ambiguous procedure. AI output is validated with Pydantic and does not override deterministic safety checks.
+---
 
 ## Tech Stack
 
-- Frontend: Next.js, TypeScript, Tailwind CSS
-- Backend: FastAPI, Python, Pydantic
-- Database: PostgreSQL, SQLAlchemy
-- Migrations: Alembic
-- AI provider: Groq optional, mock provider by default
-- Retrieval: local keyword search over reference docs
-- Infra: Docker, Render, Vercel
-- Tests: Pytest
+### Frontend
 
-## Safety
+- Next.js
+- TypeScript
+- React
+- Tailwind CSS
 
-This environment is for de-identified or synthetic notes only.
+### Backend
 
-The app blocks likely identifiers before analysis, including MRNs, DOBs, SSNs, phone numbers, email addresses, names, and simple address patterns. The frontend disables review when identifiers are detected, and the backend rejects the request before saving or processing the note.
+- Python
+- FastAPI
+- SQLAlchemy
+- Alembic
 
-## Hybrid AI And Rules Workflow
+### Database
 
-Standard review handles known examples and confident deterministic cases. AI-assisted review is used only when additional note understanding is useful. The AI layer can help summarize procedure family, operative intent, documentation gaps, and clarification questions.
+- PostgreSQL
 
-The rules layer remains responsible for:
+### Infrastructure / Development
 
-- supported CPT-style mappings
-- missing laterality checks
-- bundled-code warnings
-- unsupported-code handling
-- review status
-- reimbursement estimate from the local schedule
+- Docker
+- Docker Compose
+- Vercel
+- Render
 
-If AI assistance fails, the app still completes a standard review.
+### AI Integration
+
+- OpenRouter
+- LLM-assisted interpretation pipeline
+- Hybrid rules + AI workflow
+
+---
+
+## Project Structure
+
+```text
+apps/
+├── web/                 # Next.js frontend
+├── api/                 # FastAPI backend
+
+docs/
+├── architecture/
+├── examples/
+
+tests/
+
+alembic/
+```
+
+---
 
 ## Local Setup
 
-Backend:
+### Clone repository
 
-```powershell
-cd apps/api
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+```bash
+git clone <repository-url>
 
-$env:DATABASE_URL="sqlite:///./clinical_ops.db"
-$env:ENVIRONMENT="local"
-$env:LLM_PROVIDER="mock"
-
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+cd <project-name>
 ```
+
+### Install frontend dependencies
+
+```bash
+cd apps/web
+npm install
+```
+
+### Install backend dependencies
+
+```bash
+cd apps/api
+pip install -r requirements.txt
+```
+
+### Configure environment variables
+
+Create:
+
+```bash
+.env
+```
+
+Example:
+
+```env
+DATABASE_URL=postgresql://...
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=qwen/qwen-2.5-72b-instruct
+```
+
+### Run application
 
 Frontend:
 
-```powershell
-cd apps/web
-npm install
-$env:NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
+```bash
 npm run dev
 ```
 
-Open:
+Backend:
 
-- Web app: `http://localhost:3000`
-- API docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/health`
-
-## Groq Setup
-
-Groq is optional. Local development works without an API key.
-
-```env
-LLM_PROVIDER=groq
-GROQ_ENABLED=true
-GROQ_API_KEY=your_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+```bash
+uvicorn main:app --reload
 ```
 
-Default local mode:
+---
 
-```env
-LLM_PROVIDER=mock
-```
+## Design Notes
 
-## Deployment
+This project intentionally focuses on workflow support rather than autonomous medical decision making.
 
-The deployed setup uses:
+The system:
 
-- Vercel for the Next.js frontend
-- Render for the FastAPI backend
-- Render PostgreSQL for the database
-- Docker for the backend service
+- does not make final coding decisions
+- does not replace human review
+- does not process real patient information
+- only accepts synthetic or de-identified notes
 
-Required environment variables:
-
-```env
-DATABASE_URL=postgresql+psycopg://...
-ENVIRONMENT=production
-CORS_ORIGINS=https://your-vercel-app.vercel.app
-LLM_PROVIDER=groq
-GROQ_ENABLED=true
-GROQ_API_KEY=your_groq_key
-GROQ_MODEL=llama-3.3-70b-versatile
-NEXT_PUBLIC_API_BASE_URL=https://your-render-api.onrender.com
-```
-
-More deployment notes:
-
-- `docs/deployment.md`
-- `docs/deployment_checklist.md`
-
-## Tests
-
-```powershell
-cd apps/api
-python -m pytest -q
-```
-
-```powershell
-cd apps/web
-npm run build
-```
-
-## Screenshots
-
-### Main Review Workflow
-
-![Main review workflow](docs/screenshots/main-dashboard.png)
-
-### Ready Result
-
-![Ready result](docs/screenshots/ready-result.png)
-
-### Needs Review Result
-
-![Needs Review result](docs/screenshots/needs-review.png)
-
-### High Risk Result
-
-![High Risk result](docs/screenshots/high-risk.png)
-
-### PHI Blocked State
-
-![PHI blocked state](docs/screenshots/phi-blocked.png)
-
-### Detailed Review Panel
-
-![Detailed review panel](docs/screenshots/detailed-review.png)
-
-## Limitations
-
-- Uses synthetic or de-identified notes only
-- Not medical software
-- Not billing advice
-- CPT-style logic is simplified
-- Retrieval is keyword-based, not embedding-based
-- The evaluation set is small and synthetic
-- Reimbursement estimates use a local sample fee schedule
-- Real compliance deployment would require additional security, auditing, access control, and data handling controls
+---
 
 ## Future Improvements
 
-- Expand supported procedure families and modifier rules
-- Improve note section parsing for more dictation styles
-- Add stronger retrieval with embeddings
-- Add reviewer comments and manual override workflow
-- Add role-based views for coders, auditors, and operations teams
-- Grow the synthetic gold-standard evaluation set
+- Expanded procedure support library
+- Stronger coding confidence metrics
+- Additional documentation quality checks
+- Better explanation generation
+- Evaluation datasets for broader testing
+- Enhanced clinical workflow simulation
+
+---
+
+## Disclaimer
+
+This project is intended for educational and engineering demonstration purposes only.
+
+It is not a medical device and should not be used for clinical decision making, patient care, or production billing workflows.
