@@ -4,6 +4,8 @@ from app.agents.billing_auditor import BillingAuditor
 from app.agents.cpt_coder import CPTCoder
 from app.agents.procedure_extractor import ProcedureExtractor
 from app.agents.reimbursement_estimator import ReimbursementEstimator
+from app.agents.report_generator import ReportGenerator
+from app.models.schemas import CPTCodeCandidate, ExtractedProcedure, ReimbursementEstimate
 from app.providers.mock import MockLLMProvider
 from app.rag.retriever import KeywordRetriever
 
@@ -47,6 +49,102 @@ def test_missing_laterality_does_not_assign_modifier():
     missing_laterality = next(finding for finding in findings if finding.title == "Missing laterality")
     assert missing_laterality.documentation_improvement == "Document whether the procedure was performed on the left or right side."
     assert "laterality" in (missing_laterality.why_it_matters or "")
+
+
+def test_laterality_findings_only_apply_to_sided_procedures():
+    retriever = KeywordRetriever(ROOT / "data" / "reference_docs")
+    coder = CPTCoder(retriever)
+    auditor = BillingAuditor(retriever)
+    non_sided_procedures = [
+        ExtractedProcedure(
+            name="Laparoscopic appendectomy",
+            body_site="appendix",
+            approach="laparoscopic",
+            laterality=None,
+            evidence="Appendix removed laparoscopically.",
+            confidence=0.9,
+        ),
+        ExtractedProcedure(
+            name="Small bowel resection",
+            body_site="small bowel",
+            approach="open",
+            laterality=None,
+            evidence="Small bowel resection with anastomosis.",
+            confidence=0.82,
+        ),
+        ExtractedProcedure(
+            name="Laparoscopic cholecystectomy",
+            body_site="gallbladder",
+            approach="laparoscopic",
+            laterality=None,
+            evidence="Gallbladder removed laparoscopically.",
+            confidence=0.95,
+        ),
+    ]
+
+    for procedure in non_sided_procedures:
+        findings = auditor.run(coder.run([procedure]))
+        assert not any(finding.category == "missing_laterality" for finding in findings)
+
+
+def test_hernia_missing_laterality_is_needs_review_not_high_risk():
+    retriever = KeywordRetriever(ROOT / "data" / "reference_docs")
+    procedure = ExtractedProcedure(
+        name="Open inguinal hernia repair",
+        body_site="inguinal region",
+        approach="open",
+        laterality=None,
+        evidence="Open inguinal hernia repair with mesh.",
+        confidence=0.88,
+    )
+    candidates = CPTCoder(retriever).run([procedure])
+    findings = BillingAuditor(retriever).run(candidates)
+    estimates = [ReimbursementEstimate(code=candidates[0].code, allowed_amount=1200, source="test")]
+    _, report = ReportGenerator().run([procedure], candidates, findings, estimates)
+
+    assert any(finding.category == "missing_laterality" for finding in findings)
+    assert report["claim_readiness_status"] == "Needs Review"
+    assert report["main_issue"] == "Missing laterality"
+
+
+def test_cholecystectomy_bundling_conflict_is_high_risk():
+    retriever = KeywordRetriever(ROOT / "data" / "reference_docs")
+    procedures = ProcedureExtractor(MockLLMProvider()).run(
+        "Laparoscopic cholecystectomy with cholangiogram was documented, and both cholecystectomy services were selected."
+    )
+    candidates = CPTCoder(retriever).run(procedures)
+    findings = BillingAuditor(retriever).run(candidates)
+    estimates = [ReimbursementEstimate(code=candidate.code, allowed_amount=1000, source="test") for candidate in candidates]
+    _, report = ReportGenerator().run(procedures, candidates, findings, estimates)
+
+    assert any(finding.category == "bundling_conflict" for finding in findings)
+    assert report["claim_readiness_status"] == "High Risk"
+
+
+def test_vague_unsupported_procedure_needs_review_without_conflict():
+    procedure = ExtractedProcedure(
+        name="Unclassified operative procedure",
+        body_site=None,
+        approach=None,
+        laterality=None,
+        evidence="No supported procedure pattern matched.",
+        confidence=0.35,
+    )
+    candidate = CPTCodeCandidate(
+        procedure_name=procedure.name,
+        code="99999",
+        description="Unsupported procedure in local codebook",
+        modifiers=[],
+        rationale="No matching reference snippet found in the local demo guidelines.",
+        confidence=0.25,
+        supported_by_docs=False,
+    )
+    findings = BillingAuditor(KeywordRetriever(ROOT / "data" / "reference_docs")).run([candidate])
+    estimates = [ReimbursementEstimate(code="99999", allowed_amount=0, source="test")]
+    _, report = ReportGenerator().run([procedure], [candidate], findings, estimates)
+
+    assert any(finding.category == "unsupported_code" for finding in findings)
+    assert report["claim_readiness_status"] == "Needs Review"
 
 
 def test_retrieval_filters_irrelevant_evidence_by_family():

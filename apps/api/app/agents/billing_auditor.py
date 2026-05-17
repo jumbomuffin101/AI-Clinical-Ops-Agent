@@ -4,6 +4,36 @@ from app.rag.retriever import KeywordRetriever
 
 class BillingAuditor:
     BUNDLED_CODES = {("47562", "47563")}
+    LATERALITY_SENSITIVE_CODES = {"36821", "35371", "35301", "49505", "75710"}
+    LATERALITY_SENSITIVE_FAMILIES = {"vascular_access", "vascular_surgery", "angiography", "hernia", "orthopedics", "breast", "eye"}
+    LATERALITY_SENSITIVE_TERMS = {
+        "hernia",
+        "fistula",
+        "extremity",
+        "femoral",
+        "carotid",
+        "angiogram",
+        "angiography",
+        "bypass",
+        "breast",
+        "mastectomy",
+        "lumpectomy",
+        "eye",
+        "cataract",
+        "retina",
+    }
+    NON_LATERALITY_TERMS = {
+        "bowel",
+        "appendectomy",
+        "appendix",
+        "laparotomy",
+        "cholecystectomy",
+        "colectomy",
+        "abdominal exploration",
+        "exploratory laparotomy",
+        "small bowel",
+        "gallbladder",
+    }
     PROCEDURE_FAMILIES = {
         "AV fistula creation": "vascular_access",
         "Femoral endarterectomy": "vascular_surgery",
@@ -65,7 +95,7 @@ class BillingAuditor:
                         evidence_used=evidence_used,
                     )
                 )
-            if candidate.code in {"36821", "35371", "35301", "49505", "75710"} and not any(mod in candidate.modifiers for mod in ["LT", "RT"]):
+            if self._requires_laterality(candidate) and not any(mod in candidate.modifiers for mod in ["LT", "RT"]):
                 findings.append(
                     AuditFinding(
                         title="Missing laterality",
@@ -135,3 +165,17 @@ class BillingAuditor:
                 )
             )
         return findings
+
+    @classmethod
+    def _requires_laterality(cls, candidate: CPTCodeCandidate) -> bool:
+        procedure_name = candidate.procedure_name.lower()
+        description = candidate.description.lower()
+        combined = f"{procedure_name} {description}"
+        if any(term in combined for term in cls.NON_LATERALITY_TERMS):
+            return False
+        family = cls.PROCEDURE_FAMILIES.get(candidate.procedure_name)
+        return (
+            candidate.code in cls.LATERALITY_SENSITIVE_CODES
+            or family in cls.LATERALITY_SENSITIVE_FAMILIES
+            or any(term in combined for term in cls.LATERALITY_SENSITIVE_TERMS)
+        )

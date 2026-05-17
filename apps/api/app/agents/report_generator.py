@@ -81,18 +81,44 @@ class ReportGenerator:
         else:
             score += 5
 
+        categories = {finding.category for finding in findings if finding.severity != "info"}
+        high_risk_categories = {"bundling_conflict", "conflicting_procedures", "unsupported_cpt_combination", "compliance_risk", "severe_ambiguity"}
+        high_risk_keywords = ("bundling", "conflict", "compliance", "severe ambiguity", "unsafe combination")
+        has_high_risk_finding = any(
+            finding.category in high_risk_categories
+            or (
+                finding.severity == "high"
+                and finding.category not in {"missing_laterality", "missing_note_section", "low_confidence", "unsupported_code"}
+                and any(
+                    keyword in f"{finding.title or ''} {finding.message} {finding.explanation or ''}".lower()
+                    for keyword in high_risk_keywords
+                )
+            )
+            for finding in findings
+        )
+        needs_review_categories = {
+            "missing_laterality",
+            "incomplete_documentation",
+            "low_confidence",
+            "unsupported_code",
+            "ai_documentation_gap",
+            "ai_audit_concern",
+        }
+        has_needs_review_finding = any(category in needs_review_categories for category in categories)
+        non_blocking_categories = {"clean_claim", "missing_note_section"}
+        has_actionable_findings = any(category not in non_blocking_categories for category in categories)
+
         score = max(0, min(100, score))
-        if score >= 85:
-            status = "Ready"
-            status_key = "ready"
-        elif score >= 60:
+        if has_high_risk_finding:
+            status = "High Risk"
+            status_key = "high_risk"
+        elif has_needs_review_finding or has_actionable_findings or unsupported_count or score < 85:
             status = "Needs Review"
             status_key = "needs_review"
         else:
-            status = "High Risk"
-            status_key = "high_risk"
+            status = "Ready"
+            status_key = "ready"
 
-        categories = {finding.category for finding in findings if finding.severity != "info"}
         if "bundling_conflict" in categories:
             main_issue = "Bundling conflict"
         elif "missing_laterality" in categories:
