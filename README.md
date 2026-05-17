@@ -1,238 +1,75 @@
 # AI Clinical Ops Agent
 
-AI Clinical Ops Agent is a full-stack healthcare revenue cycle demo that analyzes synthetic operative notes, suggests CPT-style billing codes, flags documentation risks, and generates claim readiness reports.
+AI Clinical Ops Agent is a full-stack healthcare operations project for reviewing operative notes before billing review. It identifies likely procedures, flags documentation risks, suggests coder confirmation steps, and keeps a clear separation between deterministic rules and optional AI-assisted interpretation.
 
-This is not a chatbot wrapper. The goal was to build a small but realistic workflow tool with a frontend, backend, database, migrations, tests, synthetic data, and deployment path.
+The app is built for de-identified or synthetic notes only. It is not medical software and it is not billing advice. Human review is required before any billing decision.
 
 ## Why I Built This
 
-I built this project because I am interested in the intersection of healthcare operations and backend systems. A lot of healthcare software is not just about showing information; it is about helping people make operational decisions from messy documentation.
+I wanted to build something closer to a real healthcare workflow than a chatbot. Operative notes are messy, and small documentation gaps like missing laterality, unclear procedure intent, or bundled services can affect billing review. This project models that operational problem with a proper frontend, backend, database, migrations, tests, safety checks, and deployment path.
 
-Operative notes are a good example. If a note does not clearly document something like laterality, procedure intent, or whether two services should be billed together, that can affect coding, reimbursement, and claim review. I wanted to model that kind of workflow in a project that was more structured than a generic AI chat demo.
+## What It Does
 
-The project uses synthetic notes only. There is no patient data in this repository, and the app is not intended to be medical or billing advice. The point is to demonstrate how an AI-assisted operations system could be designed with deterministic outputs, audit checks, evidence snippets, revision tracking, and evaluation metrics.
+- Accepts a de-identified or synthetic operative note
+- Parses the note into operative sections when possible
+- Identifies likely procedures and anatomy
+- Flags documentation and billing-review risks
+- Suggests practical fixes for the note
+- Shows a plain-English review summary
+- Supports optional AI-assisted interpretation for vague or unsupported notes
+- Keeps detailed metadata, evaluation, recent reviews, and revision history behind a details panel
 
-## What The App Does
-
-The app lets a user:
-
-- choose or paste a synthetic operative note
-- run a billing analysis
-- identify likely CPT-style code candidates
-- parse the note into operative sections before coding
-- detect documentation or billing risks
-- estimate reimbursement from a local fake fee schedule
-- generate a claim readiness status
-- see suggested documentation improvements
-- revise the note and re-run the analysis
-- compare the original and revised results
-- review synthetic evaluation metrics across the demo dataset
-
-The revision workflow is an important part of the project. If the system flags missing laterality or ambiguous documentation, the user can edit the note, reanalyze it, and see whether the claim readiness score improved.
-
-## Example Workflow
-
-A user selects a synthetic open inguinal hernia repair note where the note does not say whether the repair was on the left or right side.
-
-The app flags:
-
-- `Missing laterality`
-- claim status: `Needs Review`
-- suggested improvement: document whether the procedure was performed on the left or right side
-
-The user updates the note to specify `left open inguinal hernia repair`, then reanalyzes it.
-
-The app shows:
-
-- the missing laterality issue was resolved
-- the claim readiness score improved
-- the CPT modifier is no longer ambiguous
-- the revision history records the before/after result
-
-## System Architecture
-
-The project is organized as a monorepo:
+## Architecture
 
 ```text
-apps/
-  api/    FastAPI backend
-  web/    Next.js frontend
-
-data/
-  synthetic_notes/
-  reference_docs/
-  fee_schedule/
-  evaluation/
-
-docs/
-```
-
-### Frontend
-
-The frontend is a Next.js app using TypeScript, React, the App Router, and Tailwind CSS. It is built as a workflow UI instead of a chat interface. The main dashboard includes:
-
-- synthetic note input
-- example note selector
-- billing analysis stage
-- claim readiness summary
-- CPT candidates
-- audit findings
-- documentation improvement suggestions
-- before/after revision impact
-- recent analyses
-- evaluation dashboard
-
-### Backend
-
-The backend is a FastAPI app with a modular analysis pipeline:
-
-```text
-Operative note
+Next.js review UI
+  -> FastAPI API
   -> structured note parser
-  -> procedure extractor
-  -> CPT coder
-  -> billing auditor
-  -> reimbursement estimator
-  -> report generator
+  -> procedure extraction
+  -> CPT-style candidate rules
+  -> billing risk auditor
+  -> optional Groq AI interpretation
+  -> PostgreSQL / SQLAlchemy
+  -> review report
 ```
 
-Each step passes structured Pydantic models to the next step. The logic is intentionally deterministic where possible so it can be tested. The system uses lightweight keyword retrieval over local reference docs instead of pretending to be a fully autonomous medical AI system.
+The deterministic pipeline runs first. AI assistance is only used when the rules need help interpreting free text, such as an unsupported or ambiguous procedure. AI output is validated with Pydantic and does not override deterministic safety checks.
 
-### Structured Note Parsing
+## Tech Stack
 
-Before CPT coding runs, the backend tries to split the operative note into sections like `Procedure`, `Indication`, `Findings`, `Technique`, `Implants`, `Complications`, `Closure`, and `Postoperative diagnosis`.
+- Frontend: Next.js, TypeScript, Tailwind CSS
+- Backend: FastAPI, Python, Pydantic
+- Database: PostgreSQL, SQLAlchemy
+- Migrations: Alembic
+- AI provider: Groq optional, mock provider by default
+- Retrieval: local keyword search over reference docs
+- Infra: Docker, Render, Vercel
+- Tests: Pytest
 
-This matters because coding review usually depends on where documentation appears, not just whether a word exists somewhere in the note. For example, laterality in the procedure or findings section is more useful than a stray phrase elsewhere in the chart. The parser is deliberately heuristic: it looks for common section headers, groups lines, detects likely anatomy/laterality, and reports missing critical sections. It is not a clinical NLP model, but it makes the workflow closer to how real operative notes are reviewed.
+## Safety
 
-### Database
+This environment is for de-identified or synthetic notes only.
 
-PostgreSQL is used for deployed environments, with SQLAlchemy models and Alembic migrations. Local development can also run against SQLite for quick testing.
+The app blocks likely identifiers before analysis, including MRNs, DOBs, SSNs, phone numbers, email addresses, names, and simple address patterns. The frontend disables review when identifiers are detected, and the backend rejects the request before saving or processing the note.
 
-Stored entities include:
+## Hybrid AI And Rules Workflow
 
-- notes
-- analyses
-- extracted procedures
-- CPT candidates
-- audit findings
-- reimbursement estimates
+Standard review handles known examples and confident deterministic cases. AI-assisted review is used only when additional note understanding is useful. The AI layer can help summarize procedure family, operative intent, documentation gaps, and clarification questions.
 
-### Infrastructure
+The rules layer remains responsible for:
 
-The backend is Dockerized and can run locally with Docker Compose or deploy to Render. The frontend is deployed separately on Vercel. Database migrations are handled with Alembic.
+- supported CPT-style mappings
+- missing laterality checks
+- bundled-code warnings
+- unsupported-code handling
+- review status
+- reimbursement estimate from the local schedule
 
-## Features
-
-- CPT-style candidate generation from synthetic operative notes
-- structured operative note parsing before coding
-- billing and documentation risk detection
-- missing modifier and missing laterality checks
-- bundled-code conflict detection
-- claim readiness scoring
-- recommended next action for each result
-- evidence snippets from local reference docs
-- missing-section audit findings for weak note structure
-- documentation improvement suggestions
-- note revision and reanalysis workflow
-- before/after comparison for revised notes
-- resolved issue tracking
-- revision history in the UI
-- recent analysis history
-- JSON export support in the backend
-- synthetic dataset evaluation dashboard
-- Dockerized backend
-- Alembic migrations
-- Pytest coverage for pipeline, API, evaluation, and revision logic
-
-## Evaluation
-
-The app includes a small synthetic benchmark under `data/evaluation/gold_standard.json`.
-
-Current evaluation results:
-
-- 9 synthetic cases evaluated
-- 100% CPT match accuracy
-- 100% audit finding accuracy
-- 100% claim readiness accuracy
-- 90.6% average confidence
-
-These numbers are only for the synthetic benchmark cases included in the repo. They should not be interpreted as real-world billing accuracy. The evaluation is useful because it checks that the deterministic pipeline produces the expected outputs for known demo cases and catches regressions when the rules change.
-
-## Deployment
-
-The deployed version uses:
-
-- Vercel for the Next.js frontend
-- Render for the FastAPI backend
-- Render PostgreSQL for the database
-- Docker for the backend service
-
-Important environment variables:
-
-```env
-DATABASE_URL=postgresql+psycopg://...
-LLM_PROVIDER=groq
-GROQ_ENABLED=true
-GROQ_API_KEY=your_groq_key
-GROQ_MODEL=llama-3.3-70b-versatile
-ENVIRONMENT=production
-CORS_ORIGINS=https://your-vercel-app.vercel.app
-NEXT_PUBLIC_API_BASE_URL=https://your-render-api.onrender.com
-```
-
-The backend should run in production mode, not with Uvicorn reload enabled.
-
-More deployment notes are in:
-
-- `docs/deployment.md`
-- `docs/deployment_checklist.md`
-
-## Using Groq For Hybrid AI
-
-The app can optionally run in a hybrid AI-assisted mode with Groq. Rules mode is still the default for local development, but Groq is the preferred deployed AI provider because it is faster and more reliable for this use case than the free OpenRouter models I initially tried.
-
-Default local mode is still:
-
-```env
-LLM_PROVIDER=mock
-```
-
-To enable Groq:
-
-```env
-LLM_PROVIDER=groq
-GROQ_ENABLED=true
-GROQ_API_KEY=your_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-```
-
-Hybrid mode is draft assistance only. The backend validates Groq output with strict Pydantic schemas, then still runs the deterministic parser, CPT rules, audit checks, reimbursement logic, and claim readiness scoring. Known synthetic examples stay in rules mode. Groq is only used when the deterministic result needs help, such as an unsupported procedure, vague wording, missing structure, or low-confidence interpretation.
-
-Groq can enhance:
-
-- free-text procedure interpretation
-- likely procedure family
-- likely CPT category
-- documentation gaps
-- suggested clarifications
-- billing review reasoning
-
-It does not override the deterministic billing safeguards. If Groq is unavailable, returns malformed JSON, or fails validation, the app falls back to rules mode and shows a safe message: `AI enhancement temporarily unavailable. Core billing review completed successfully.`
-
-Do not enter real patient information. Before calling Groq, the backend checks for simple PHI-like identifiers such as MRNs, DOBs, SSNs, phone numbers, emails, and simple address patterns. If one is detected, the Groq call is blocked and the note stays in rules mode.
-
-OpenRouter support still exists as a secondary provider for experimentation:
-
-```env
-LLM_PROVIDER=openrouter
-OPENROUTER_ENABLED=true
-OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=qwen/qwen-2.5-72b-instruct:free
-```
+If AI assistance fails, the app still completes a standard review.
 
 ## Local Setup
 
-### Backend
+Backend:
 
 ```powershell
 cd apps/api
@@ -248,7 +85,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+Frontend:
 
 ```powershell
 cd apps/web
@@ -259,11 +96,55 @@ npm run dev
 
 Open:
 
-- frontend: `http://localhost:3000`
+- Web app: `http://localhost:3000`
 - API docs: `http://localhost:8000/docs`
-- health check: `http://localhost:8000/health`
+- Health check: `http://localhost:8000/health`
 
-### Tests
+## Groq Setup
+
+Groq is optional. Local development works without an API key.
+
+```env
+LLM_PROVIDER=groq
+GROQ_ENABLED=true
+GROQ_API_KEY=your_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+Default local mode:
+
+```env
+LLM_PROVIDER=mock
+```
+
+## Deployment
+
+The deployed setup uses:
+
+- Vercel for the Next.js frontend
+- Render for the FastAPI backend
+- Render PostgreSQL for the database
+- Docker for the backend service
+
+Required environment variables:
+
+```env
+DATABASE_URL=postgresql+psycopg://...
+ENVIRONMENT=production
+CORS_ORIGINS=https://your-vercel-app.vercel.app
+LLM_PROVIDER=groq
+GROQ_ENABLED=true
+GROQ_API_KEY=your_groq_key
+GROQ_MODEL=llama-3.3-70b-versatile
+NEXT_PUBLIC_API_BASE_URL=https://your-render-api.onrender.com
+```
+
+More deployment notes:
+
+- `docs/deployment.md`
+- `docs/deployment_checklist.md`
+
+## Tests
 
 ```powershell
 cd apps/api
@@ -277,57 +158,46 @@ npm run build
 
 ## Screenshots
 
-### Main Dashboard
+### Main Review Workflow
 
-![Main dashboard screenshot placeholder](docs/screenshots/main-dashboard.png)
+![Main review workflow](docs/screenshots/main-dashboard.png)
+
+### Ready Result
+
+![Ready result](docs/screenshots/ready-result.png)
 
 ### Needs Review Result
 
-![Needs Review screenshot placeholder](docs/screenshots/needs-review.png)
+![Needs Review result](docs/screenshots/needs-review.png)
 
 ### High Risk Result
 
-![High Risk screenshot placeholder](docs/screenshots/high-risk.png)
+![High Risk result](docs/screenshots/high-risk.png)
 
-### Revision Workflow
+### PHI Blocked State
 
-![Revision workflow screenshot placeholder](docs/screenshots/revision-workflow.png)
+![PHI blocked state](docs/screenshots/phi-blocked.png)
 
-### Parsed Note Structure
+### Detailed Review Panel
 
-![Parsed note structure screenshot placeholder](docs/screenshots/parsed-note-structure.png)
-
-### Evaluation Dashboard
-
-![Evaluation dashboard screenshot placeholder](docs/screenshots/evaluation-dashboard.png)
+![Detailed review panel](docs/screenshots/detailed-review.png)
 
 ## Limitations
 
-This project has important limitations:
-
-- It uses synthetic operative notes only.
-- It is not production medical software.
-- It is not billing advice and should not be used for real claims.
-- CPT logic is simplified and only covers a small demo code set.
-- Many decisions are deterministic and rule-based by design.
-- Structured note parsing is heuristic and will not handle every real operative note format.
-- The retrieval system is keyword-based, not embedding-based.
-- The fee schedule is fake and only exists for demo purposes.
-- The evaluation set is small and synthetic.
-- The OpenAI provider is only a placeholder; the mock provider is the default.
-
-I kept these limitations explicit because the goal is to show system design and workflow thinking, not to claim real clinical or billing correctness.
+- Uses synthetic or de-identified notes only
+- Not medical software
+- Not billing advice
+- CPT-style logic is simplified
+- Retrieval is keyword-based, not embedding-based
+- The evaluation set is small and synthetic
+- Reimbursement estimates use a local sample fee schedule
+- Real compliance deployment would require additional security, auditing, access control, and data handling controls
 
 ## Future Improvements
 
-Some realistic next steps:
-
-- improve retrieval with embeddings and better document chunking
-- expand the synthetic gold-standard evaluation set
-- improve note section parsing for more real-world dictation formats
-- support more CPT families and modifier rules
-- make reimbursement logic more realistic
-- add reviewer comments and manual override workflow
-- expand the provider abstraction beyond the mock provider
-- add frontend component tests for revision workflows
-- add role-based views for coder, auditor, and operations reviewer
+- Expand supported procedure families and modifier rules
+- Improve note section parsing for more dictation styles
+- Add stronger retrieval with embeddings
+- Add reviewer comments and manual override workflow
+- Add role-based views for coders, auditors, and operations teams
+- Grow the synthetic gold-standard evaluation set

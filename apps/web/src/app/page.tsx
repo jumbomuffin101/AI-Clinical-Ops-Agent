@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ProductHeader, WorkflowSteps } from "./components/header";
+import { Disclosure, FriendlyEmpty, SectionCard, StatusBadge, SummaryMetric, getStatusStyles } from "./components/ui";
+
 type EvidenceSnippet = {
   source: string;
   snippet: string;
@@ -324,7 +327,7 @@ export default function Home() {
     const response = await fetch(`${apiBaseUrl}/api/analyses/${id}`);
     const payload = await response.json();
     if (!response.ok) {
-      setError("Could not generate report. Check that the backend API is running and try again.");
+      setError("Unable to complete review. Please try again.");
       return;
     }
     setReport(payload);
@@ -369,7 +372,7 @@ export default function Home() {
         delay(1250),
       ]);
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error?.message ?? "API request failed.");
+      if (!response.ok) throw new Error(payload?.error?.message ?? "Review request failed.");
       setReport(payload);
       setLastAnalyzedNote(noteText);
       if (previousReport) {
@@ -390,7 +393,7 @@ export default function Home() {
       }
       await loadHistory();
     } catch {
-      setError("Could not generate report. Check that the backend API is running and try again.");
+      setError("Unable to complete review. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -463,98 +466,6 @@ export default function Home() {
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function ProductHeader({ onStartReview }: { onStartReview: () => void }) {
-  return (
-    <header className="border-b border-[#dce9e7] bg-gradient-to-br from-[#f7fbfa] via-[#fffdfa] to-[#eef7f5]">
-      <div className="mx-auto max-w-7xl px-5 py-10">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-center">
-          <div>
-            <p className="text-sm font-semibold text-[#2d7772]">Clinical operations review</p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-normal text-[#17343c] md:text-5xl">AI Clinical Ops Agent</h1>
-            <p className="mt-3 text-xl font-medium text-[#31545b]">Operative note review for billing teams.</p>
-            <p className="mt-4 max-w-3xl text-base leading-7 text-[#5d7375]">
-              Identify procedures, surface documentation risks, and prepare coder review next steps from operative notes.
-            </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={onStartReview}
-                className="rounded-xl bg-[#206b63] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(32,107,99,0.18)] hover:bg-[#195950]"
-              >
-                Start review
-              </button>
-              <p className="text-sm text-[#6f8584]">Human review required before coding or submission.</p>
-            </div>
-            <p className="mt-5 max-w-3xl rounded-2xl border border-[#dce9e7] bg-white/65 px-4 py-3 text-sm leading-6 text-[#617879]">
-              Use de-identified or synthetic notes only. Do not enter patient identifiers in this environment.
-            </p>
-          </div>
-          <div className="rounded-3xl border border-[#d8e8e4] bg-white/78 p-6 shadow-[0_20px_48px_rgba(49,84,91,0.08)]">
-            <p className="text-sm font-semibold text-[#17343c]">Review workflow</p>
-            <div className="mt-5 space-y-4">
-              <HeroStep number="01" title="Add note" text="Paste an operative note or choose an included example." />
-              <HeroStep number="02" title="Analyze" text="Run rules plus optional hybrid AI interpretation." />
-              <HeroStep number="03" title="Review" text="Use the summary to decide what a coder should verify next." />
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <ValueCard title="Identify the procedure" text="Summarize what operation the note appears to describe." />
-          <ValueCard title="Flag documentation risks" text="Surface missing details, ambiguity, and compliance-sensitive billing concerns." />
-          <ValueCard title="Prepare reviewer next steps" text="Explain what a human coder or billing reviewer should verify before submission." />
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function HeroStep({ number, title, text }: { number: string; title: string; text: string }) {
-  return (
-    <div className="flex gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e6f3f1] text-xs font-semibold text-[#206b63]">{number}</span>
-      <div>
-        <p className="text-sm font-semibold text-[#17343c]">{title}</p>
-        <p className="mt-1 text-sm leading-6 text-[#6b7f80]">{text}</p>
-      </div>
-    </div>
-  );
-}
-
-function ValueCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-[#dce9e7] bg-white/75 p-5 shadow-[0_10px_28px_rgba(49,84,91,0.04)]">
-      <h2 className="text-sm font-semibold text-[#17343c]">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-[#607678]">{text}</p>
-    </div>
-  );
-}
-
-function WorkflowSteps() {
-  const steps = [
-    ["Step 1", "Add note"],
-    ["Step 2", "Analyze"],
-    ["Step 3", "Review"],
-  ];
-  return (
-    <section className="rounded-2xl border border-[#dce9e7] bg-white/80 p-3 shadow-[0_12px_32px_rgba(49,84,91,0.04)]">
-      <div className="grid gap-2 md:grid-cols-3">
-        {steps.map(([label, text]) => (
-          <div key={label} className="flex items-center gap-3 rounded-xl px-3 py-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e6f3f1] text-sm font-semibold text-[#206b63]">
-              {label.replace("Step ", "")}
-            </span>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
-              <p className="mt-0.5 text-sm font-semibold text-[#31545b]">{text}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
 }
 
 function InputPanel({
@@ -816,7 +727,7 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
             <p className="mt-2 text-base font-semibold text-[#17343c]">{billingCodeLabel(report)}</p>
             {!meaningfulCptCandidate(report) ? (
               <p className="mt-2 text-sm leading-6 text-[#586b69]">
-                The system identified the procedure, but the local demo CPT library does not contain a confident billing-code match.
+                The system identified the procedure, but the local review library does not contain a confident billing-code match.
               </p>
             ) : null}
           </div>
@@ -835,7 +746,7 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 function CptCandidates({ report }: { report: AnalysisReport | null }) {
   const meaningfulCandidates = (report?.cpt_candidates ?? []).filter(isMeaningfulCpt);
   return (
-    <SectionCard title="Billing Code Details" explainer="Shows CPT candidates only when the local demo library has enough support to make them useful for review.">
+    <SectionCard title="Billing Code Details" explainer="Shows billing-code candidates only when the local review library has enough support to make them useful.">
       {report ? (
         meaningfulCandidates.length ? (
           <div className="overflow-x-auto">
@@ -867,12 +778,12 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
           <div className="rounded-xl border border-[#ead8c0] bg-[#fbf2e6] p-4">
             <p className="font-semibold text-[#7a5428]">Billing code: Review needed</p>
             <p className="mt-2 text-sm leading-6 text-[#776653]">
-              The system identified the procedure, but the local demo CPT library does not contain a confident billing-code match.
+              The system identified the procedure, but the local review library does not contain a confident billing-code match.
             </p>
           </div>
         )
       ) : (
-        <FriendlyEmpty title="Billing code details will appear after analysis." text="Unsupported demo codes are hidden from the main summary so they do not look like recommendations." />
+        <FriendlyEmpty title="Billing code details will appear after analysis." text="Unsupported codes are hidden from the main summary so they do not look like recommendations." />
       )}
     </SectionCard>
   );
@@ -997,7 +908,7 @@ function SystemEvaluation({ evaluation, loading }: { evaluation: EvaluationSumma
   return (
     <SectionCard
       title="System Evaluation"
-      explainer="This evaluation uses synthetic operative notes only. It measures whether the system consistently produces the expected CPT, risk status, and audit findings for known demo cases."
+      explainer="This evaluation uses synthetic operative notes only. It measures whether the system consistently produces the expected CPT, risk status, and audit findings for known review cases."
     >
       {evaluation ? (
         <>
@@ -1011,7 +922,7 @@ function SystemEvaluation({ evaluation, loading }: { evaluation: EvaluationSumma
           <div className="mt-5 rounded-xl bg-[#f7f4ef] p-4">
             <p className="text-sm font-semibold text-[#34464a]">Demo Dataset</p>
             <p className="mt-2 text-sm leading-6 text-[#667774]">
-              These metrics compare deterministic pipeline outputs against a small gold-standard file for the included synthetic notes. They demonstrate consistency for demo cases, not clinical or billing correctness on real patient records.
+              These metrics compare pipeline outputs against a small gold-standard file for the included synthetic notes. They demonstrate consistency for included cases, not clinical or billing correctness on real patient records.
             </p>
             <p className="mt-2 text-xs text-[#71817d]">Last evaluated: {new Date(evaluation.last_evaluated_at).toLocaleString()}</p>
           </div>
@@ -1114,7 +1025,7 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
           </div>
         ) : (
           <div className="rounded-xl border border-[#c4dad2] bg-[#edf6f2] p-4">
-            <p className="font-semibold text-[#245c52]">No documentation gaps were flagged by the local demo checks.</p>
+            <p className="font-semibold text-[#245c52]">No documentation gaps were flagged by the local review checks.</p>
             <p className="mt-2 text-sm leading-6 text-[#586b69]">A billing team would still perform standard human validation before submission.</p>
           </div>
         )
@@ -1246,7 +1157,7 @@ function RecentAnalyses({
   onLoad: (id: string) => void;
 }) {
   return (
-    <SectionCard title="Recent Reviews" explainer="Previously generated demo reviews from this environment.">
+    <SectionCard title="Recent Reviews" explainer="Previously generated reviews from this environment.">
       {history.length ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {history.map((item) => (
@@ -1281,7 +1192,7 @@ function RecentAnalyses({
 
 function RevisionHistoryPanel({ items }: { items: RevisionHistoryItem[] }) {
   return (
-    <SectionCard title="Revision History" explainer="Tracks note edits made during this browser session and how each revision changed claim readiness.">
+    <SectionCard title="Revision History" explainer="Tracks note edits made during this browser session and how each revision changed review status.">
       {items.length ? (
         <div className="space-y-4">
           {items.map((item, index) => (
@@ -1318,119 +1229,6 @@ function NotePreview({ title, text }: { title: string; text: string }) {
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">{title}</p>
       <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-xs leading-5 text-[#667774]">{text}</p>
     </div>
-  );
-}
-
-function Disclosure({ title, open, onToggle, children }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-2xl border border-[#dce9e7] bg-white/82 shadow-[0_12px_30px_rgba(49,84,91,0.045)]">
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-5 px-6 py-5 text-left transition hover:bg-[#f4fbf9]">
-        <span>
-          <span className="block text-base font-semibold text-[#17343c]">{title}</span>
-          <span className="mt-1 block text-xs font-medium uppercase tracking-[0.08em] text-[#789093]">{open ? "Expanded" : "Collapsed"}</span>
-        </span>
-        <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#cfe4df] bg-[#edf7f5] text-lg font-semibold text-[#206b63] transition-transform ${
-            open ? "rotate-45" : ""
-          }`}
-          aria-hidden="true"
-        >
-          +
-        </span>
-      </button>
-      {open ? <div className="border-t border-[#e7efed] bg-[#fbfefd] p-6">{children}</div> : null}
-    </section>
-  );
-}
-
-function SectionCard({ title, explainer, children }: { title: string; explainer: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-[#dce9e7] bg-white/82 p-6 shadow-[0_14px_36px_rgba(49,84,91,0.05)]">
-      <h2 className="text-lg font-semibold text-[#17343c]">{title}</h2>
-      <p className="mt-1 text-sm leading-6 text-[#607678]">{explainer}</p>
-      <div className="mt-5">{children}</div>
-    </section>
-  );
-}
-
-function SummaryMetric({
-  label,
-  value,
-  detail,
-  status,
-  className = "",
-  title,
-  clamp = "line-clamp-2",
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  status?: string;
-  className?: string;
-  title?: string;
-  clamp?: string;
-}) {
-  const statusStyles = status ? getStatusStyles(status) : null;
-  return (
-    <div className={`min-w-0 rounded-xl border p-4 ${statusStyles?.metricCard ?? "border-[#dce9e7] bg-[#f9fcfb]"} ${className}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
-      <p title={title ?? value} className={`mt-2 break-words text-lg font-semibold leading-6 ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}>
-        {value}
-      </p>
-      {detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#6f8584]">{detail}</p> : null}
-    </div>
-  );
-}
-
-function FriendlyEmpty({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="mt-4 rounded-xl border border-dashed border-[#d8d0c4] bg-[#fffaf4] p-5">
-      <p className="font-semibold text-[#34464a]">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-[#71817d]">{text}</p>
-    </div>
-  );
-}
-
-function getStatusStyles(status: string) {
-  const normalized = status.toLowerCase();
-  if (normalized.includes("high") || normalized.includes("fail")) {
-    return {
-      text: "text-[#9f2f24]",
-      badge: "border-[#efc2ba] bg-[#fbebe8] text-[#9f2f24]",
-      metricCard: "border-[#efc2ba] bg-[#fff6f4]",
-      summaryCard: "border-[#efc2ba] bg-[#fffafa]",
-    };
-  }
-  if (normalized.includes("review") || normalized.includes("running")) {
-    return {
-      text: "text-[#8a5b12]",
-      badge: "border-[#e8d19b] bg-[#fff6dc] text-[#8a5b12]",
-      metricCard: "border-[#e8d19b] bg-[#fffaf0]",
-      summaryCard: "border-[#e8d19b] bg-[#fffdf8]",
-    };
-  }
-  if (normalized.includes("ready") || normalized.includes("pass")) {
-    return {
-      text: "text-[#1f6b54]",
-      badge: "border-[#b9ddcf] bg-[#eaf7f1] text-[#1f6b54]",
-      metricCard: "border-[#b9ddcf] bg-[#f4fbf8]",
-      summaryCard: "border-[#b9ddcf] bg-[#fbfffd]",
-    };
-  }
-  return {
-    text: "text-[#5f7374]",
-    badge: "border-[#dce9e7] bg-[#f7fbfa] text-[#5f7374]",
-    metricCard: "border-[#dce9e7] bg-[#f9fcfb]",
-    summaryCard: "border-[#dce9e7] bg-white/86",
-  };
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles = getStatusStyles(status);
-  return (
-    <span className={`inline-flex items-center justify-center whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-semibold leading-none ${styles.badge}`}>
-      {status}
-    </span>
   );
 }
 
@@ -1578,10 +1376,10 @@ function reportNarrative(report: AnalysisReport) {
   const procedure = detectedProcedureLabel(report).toLowerCase();
   const family = report.report.ai_likely_procedure_family;
   if (!meaningfulCptCandidate(report)) {
-    return `The note describes ${procedure}. ${family ? `The app identified this as a ${family} case, but ` : "However, "}the local demo code library does not contain enough billing rules to assign a confident CPT. A human coding reviewer should confirm the operative extent and appropriate billing code.`;
+    return `The note describes ${procedure}. ${family ? `The app identified this as a ${family} case, but ` : "However, "}the local review library does not contain enough billing rules to assign a confident CPT. A billing reviewer should confirm the operative extent and appropriate code.`;
   }
   if (displayReviewStatus(report) === "Ready") {
-    return `The note is marked Ready for standard billing review because the procedure is documented clearly and the demo checks did not find major billing risks. Recommended next step: ${action}`;
+    return `The note is marked Ready for standard billing review because the procedure is documented clearly and the review checks did not find major billing risks. Recommended next step: ${action}`;
   }
   if (issue === "Missing laterality") {
     return `The note needs review because laterality was not clearly documented. Clarifying whether the procedure was performed on the left or right side would reduce modifier ambiguity.`;
