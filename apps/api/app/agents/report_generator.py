@@ -82,7 +82,14 @@ class ReportGenerator:
             score += 5
 
         categories = {finding.category for finding in findings if finding.severity != "info"}
-        high_risk_categories = {"bundling_conflict", "conflicting_procedures", "unsupported_cpt_combination", "compliance_risk", "severe_ambiguity"}
+        high_risk_categories = {
+            "bundling_conflict",
+            "conflicting_documentation",
+            "conflicting_procedures",
+            "unsupported_cpt_combination",
+            "compliance_risk",
+            "severe_ambiguity",
+        }
         high_risk_keywords = ("bundling", "conflict", "compliance", "severe ambiguity", "unsafe combination")
         has_high_risk_finding = any(
             finding.category in high_risk_categories
@@ -104,7 +111,10 @@ class ReportGenerator:
             "ai_documentation_gap",
             "ai_audit_concern",
         }
-        has_needs_review_finding = any(category in needs_review_categories for category in categories)
+        has_needs_review_finding = any(
+            finding.category in needs_review_categories or (finding.category == "missing_note_section" and finding.severity in {"medium", "high"})
+            for finding in findings
+        )
         non_blocking_categories = {"clean_claim", "missing_note_section"}
         has_actionable_findings = any(category not in non_blocking_categories for category in categories)
 
@@ -121,6 +131,8 @@ class ReportGenerator:
 
         if "bundling_conflict" in categories:
             main_issue = "Bundling conflict"
+        elif "conflicting_documentation" in categories or "conflicting_procedures" in categories:
+            main_issue = "Conflicting documentation"
         elif "missing_laterality" in categories:
             main_issue = "Missing laterality"
         elif "low_confidence" in categories:
@@ -130,7 +142,9 @@ class ReportGenerator:
         else:
             main_issue = "No major issues"
 
-        if status == "Ready":
+        if main_issue == "Conflicting documentation":
+            recommended_action = "Review procedure narrative and diagnosis mismatch before coding."
+        elif status == "Ready":
             recommended_action = "Proceed with standard billing review."
         elif status == "Needs Review":
             recommended_action = "Clarify documentation before submission."

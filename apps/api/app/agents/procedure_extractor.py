@@ -135,7 +135,7 @@ class ProcedureExtractor:
             return note_text
         sections = structured_note.parsed_sections
         preferred = " ".join(sections.get(section, "") for section in ["Procedure", "Findings", "Technique"])
-        return preferred if preferred.strip() else note_text
+        return f"{preferred} {note_text}" if preferred.strip() else note_text
 
     @staticmethod
     def _laterality(text: str) -> str | None:

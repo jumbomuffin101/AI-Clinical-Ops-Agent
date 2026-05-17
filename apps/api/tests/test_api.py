@@ -204,6 +204,52 @@ def test_missing_laterality_is_not_ready(client):
     assert "modifier" in missing_laterality["why_it_matters"]
 
 
+def test_missing_laterality_is_needs_review_not_high_risk(client):
+    note = (
+        "Title: Open inguinal hernia repair. Procedure: Open inguinal hernia repair with mesh. "
+        "Operative note: The hernia sac was reduced and mesh repair was completed. The note does not document the side."
+    )
+    response = client.post("/api/notes", json={"title": "Missing hernia side", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "Needs Review"
+    assert body["report"]["main_issue"] == "Missing laterality"
+
+
+def test_appendectomy_ready_without_laterality_finding(client):
+    note = (
+        "Title: Laparoscopic appendectomy. Procedure: Laparoscopic appendectomy. "
+        "Findings: Inflamed appendix without perforation. "
+        "Technique: The appendix was divided with a stapler and removed laparoscopically. "
+        "Postoperative diagnosis: Acute appendicitis."
+    )
+    response = client.post("/api/notes", json={"title": "Appendectomy", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "Ready"
+    assert body["cpt_candidates"][0]["code"] == "44970"
+    assert body["report"]["main_issue"] == "No major issues"
+    assert not any(finding["category"] == "missing_laterality" for finding in body["audit_findings"])
+
+
+def test_conflicting_appendectomy_cholecystectomy_documentation_is_high_risk(client):
+    note = """Procedure: Laparoscopic appendectomy.
+Findings: Gallstones with inflamed gallbladder.
+Technique: Gallbladder was dissected from the liver bed and removed.
+Postoperative diagnosis: Acute appendicitis."""
+    response = client.post("/api/notes", json={"title": "Conflicting documentation", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "High Risk"
+    assert body["report"]["main_issue"] == "Conflicting documentation"
+    assert body["report"]["recommended_action"] == "Review procedure narrative and diagnosis mismatch before coding."
+    conflict = next(finding for finding in body["audit_findings"] if finding["category"] == "conflicting_documentation")
+    assert conflict["documentation_improvement"] == "Clarify whether appendectomy or cholecystectomy was performed."
+
+
 def test_revised_note_workflow_improves_readiness(client):
     initial_note = (
         "Title: Open inguinal hernia repair with missing laterality. Procedure: Open inguinal hernia repair with mesh. "

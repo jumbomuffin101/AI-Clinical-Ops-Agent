@@ -23,6 +23,7 @@ from app.models.schemas import (
     AnalysisListItem,
     AnalysisReport,
     AuditFinding,
+    CPTCodeCandidate,
     ExtractedProcedure,
     OperativeNote,
     StructuredOperativeNote,
@@ -72,7 +73,7 @@ class AnalysisService:
             procedures = self._merge_ai_procedures(procedures, ai_analysis, structured_note)
             candidates = self.coder.run(procedures)
             findings = self.auditor.run(candidates, structured_note)
-        findings.extend(self._ai_audit_findings(ai_analysis))
+        findings.extend(self._ai_audit_findings(ai_analysis, candidates))
         if ai_analysis and ai_analysis.unsupported_or_unclear_procedure and not any(finding.category == "unsupported_code" for finding in findings):
             findings.append(self._unsupported_ai_finding())
         estimates = self.estimator.run(candidates)
@@ -732,11 +733,15 @@ class AnalysisService:
         return ai_analysis.likely_procedure_family
 
     @staticmethod
-    def _ai_audit_findings(ai_analysis: AIStructuredOperativeNote | None) -> list[AuditFinding]:
+    def _ai_audit_findings(ai_analysis: AIStructuredOperativeNote | None, candidates: list[CPTCodeCandidate]) -> list[AuditFinding]:
         if not ai_analysis:
             return []
         findings: list[AuditFinding] = []
+        laterality_relevant = AnalysisService._laterality_relevant_for_ai(ai_analysis, candidates)
         for concern in ai_analysis.audit_concerns:
+            concern_text = f"{concern.title} {concern.explanation} {concern.suggested_action}"
+            if AnalysisService._is_laterality_text(concern_text) and not laterality_relevant:
+                continue
             findings.append(
                 AuditFinding(
                     title=concern.title,
@@ -752,6 +757,8 @@ class AnalysisService:
                 )
             )
         for gap in ai_analysis.documentation_gaps:
+            if AnalysisService._is_laterality_text(gap) and not laterality_relevant:
+                continue
             findings.append(
                 AuditFinding(
                     title="Documentation gap",
@@ -767,6 +774,27 @@ class AnalysisService:
                 )
             )
         return findings
+
+    @staticmethod
+    def _is_laterality_text(text: str) -> bool:
+        lowered = text.lower()
+        return any(term in lowered for term in ["laterality", "left", "right", "side", "sided"])
+
+    @staticmethod
+    def _laterality_relevant_for_ai(ai_analysis: AIStructuredOperativeNote, candidates: list[CPTCodeCandidate]) -> bool:
+        if any(BillingAuditor._requires_laterality(candidate) for candidate in candidates):
+            return True
+        text = " ".join(
+            [
+                ai_analysis.likely_procedure_family or "",
+                ai_analysis.procedure_summary or "",
+                " ".join(procedure.name for procedure in ai_analysis.detected_procedures),
+                " ".join((procedure.anatomy or "") for procedure in ai_analysis.detected_procedures),
+            ]
+        ).lower()
+        if any(term in text for term in ["bowel", "appendectomy", "appendix", "cholecystectomy", "gallbladder", "colectomy", "laparotomy", "abdominal exploration"]):
+            return False
+        return any(term in text for term in ["hernia", "fistula", "extremity", "breast", "kidney", "renal", "eye", "orthopedic", "unilateral"])
 
     @staticmethod
     def _unsupported_ai_finding() -> AuditFinding:

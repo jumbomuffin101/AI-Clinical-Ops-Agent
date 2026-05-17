@@ -733,7 +733,7 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
           <p className="mt-2 text-sm leading-6 text-[#607678]">
             Status-first clinical operations review for a human reviewer. This is not a final coding decision.
           </p>
-          {report ? (
+          {report && displayReviewStatus(report) !== "Ready" ? (
             <div className="mt-3 rounded-xl border border-[#dce9e7] bg-[#f7fbfa] px-4 py-3 text-xs leading-5 text-[#607678]">
               <span className="font-semibold text-[#31545b]">{reviewModeMessage(report)}</span>
             </div>
@@ -744,11 +744,11 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
       {report ? (
         <>
-          <div className="mt-6 grid min-w-0 grid-cols-1 auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-6 grid min-w-0 grid-cols-1 auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-[minmax(120px,0.85fr)_minmax(0,1.85fr)_minmax(160px,1.2fr)_minmax(0,2.1fr)]">
             <SummaryMetric label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
-            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="line-clamp-4" />
-            <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} clamp="line-clamp-3" />
-            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="line-clamp-5" />
+            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
+            <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} clamp="" />
+            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
           </div>
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Coding Recommendation</p>
@@ -1082,6 +1082,7 @@ function suggestedFixFindings(report: AnalysisReport | null) {
   return report.audit_findings
     .filter((finding) => {
       if (finding.category === "clean_claim") return false;
+      if (isLateralityFinding(finding) && !isLateralityRelevant(report)) return false;
       if (status === "Needs Review") return finding.severity !== "info";
       return finding.severity === "high" || finding.severity === "medium";
     })
@@ -1090,10 +1091,10 @@ function suggestedFixFindings(report: AnalysisReport | null) {
 }
 
 function fixPriority(finding: AuditFinding, report: AnalysisReport) {
-  const severity = finding.severity === "high" ? 40 : finding.severity === "medium" ? 25 : finding.severity === "low" ? 10 : 0;
-  const specific = isSpecificFix(finding, report) ? 20 : 0;
-  const actionable = (finding.suggested_action || finding.documentation_improvement || improvementForFinding(finding, report)).length > 24 ? 10 : 0;
-  const genericPenalty = ["ai_documentation_gap", "ai_audit_concern"].includes(finding.category) ? -8 : 0;
+  const severity = finding.severity === "high" ? 100 : finding.severity === "medium" ? 70 : finding.severity === "low" ? 30 : 0;
+  const actionable = (finding.suggested_action || finding.documentation_improvement || improvementForFinding(finding, report)).length > 24 ? 12 : 0;
+  const specific = isSpecificFix(finding, report) ? 10 : 0;
+  const genericPenalty = isGenericFix(finding) ? -12 : 0;
   return severity + specific + actionable + genericPenalty;
 }
 
@@ -1102,6 +1103,16 @@ function isSpecificFix(finding: AuditFinding, report: AnalysisReport) {
   if (isGiSurgeryReview(report) && ["low_confidence", "unsupported_code"].includes(finding.category)) return true;
   const text = `${finding.title ?? ""} ${finding.message} ${finding.explanation ?? ""} ${finding.suggested_action ?? ""}`.toLowerCase();
   return ["laterality", "cholangiogram", "anastomosis", "resection", "bowel", "additional procedure"].some((term) => text.includes(term));
+}
+
+function isGenericFix(finding: AuditFinding) {
+  const text = `${finding.category} ${finding.title ?? ""} ${finding.message} ${finding.explanation ?? ""}`.toLowerCase();
+  return ["ai_documentation_gap", "ai_audit_concern"].includes(finding.category) || ["incomplete documentation", "documentation gap"].some((term) => text.includes(term));
+}
+
+function isLateralityFinding(finding: AuditFinding) {
+  const text = `${finding.category} ${finding.title ?? ""} ${finding.message} ${finding.explanation ?? ""} ${finding.suggested_action ?? ""} ${finding.documentation_improvement ?? ""}`.toLowerCase();
+  return ["laterality", "left or right", "left/right", "side"].some((term) => text.includes(term));
 }
 
 function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
@@ -1411,6 +1422,17 @@ function isGiSurgeryReview(report: AnalysisReport) {
   return report.report.ai_likely_procedure_family === "GI surgery" || ["bowel", "ileum", "ileal", "anastomosis", "laparotomy", "colectomy"].some((term) => text.includes(term));
 }
 
+function isLateralityRelevant(report: AnalysisReport) {
+  const text = [
+    aiReviewText(report),
+    ...report.cpt_candidates.map((candidate) => `${candidate.procedure_name} ${candidate.description} ${candidate.code}`),
+  ].join(" ").toLowerCase();
+  if (["bowel", "appendectomy", "appendix", "cholecystectomy", "gallbladder", "colectomy", "laparotomy", "abdominal exploration"].some((term) => text.includes(term))) {
+    return false;
+  }
+  return ["hernia", "fistula", "extremity", "breast", "kidney", "renal", "eye", "orthopedic", "unilateral", "femoral", "carotid", "angiogram"].some((term) => text.includes(term));
+}
+
 function keyAnatomyLabel(report: AnalysisReport) {
   const text = aiReviewText(report);
   if (text.includes("distal ileum")) return "the distal ileum";
@@ -1437,6 +1459,7 @@ function nextStepLabel(report: AnalysisReport) {
     }
     return "Confirm operative details and final CPT selection with a human coder.";
   }
+  if (issue === "Conflicting documentation") return "Review procedure narrative and diagnosis mismatch before coding.";
   if (issue === "Missing laterality") return "Clarify left or right side before clinical operations review.";
   if (issue === "Bundling conflict") return "Confirm which service should be billed before submission.";
   if (issue === "Ambiguous documentation") return "Clarify the procedure intent and operative extent.";
@@ -1460,6 +1483,7 @@ function hasSevereBillingRisk(report: AnalysisReport) {
 function mainIssue(findings: AuditFinding[]) {
   const categories = findings.map((finding) => finding.category);
   if (categories.includes("bundling_conflict")) return "Bundling conflict";
+  if (categories.includes("conflicting_documentation") || categories.includes("conflicting_procedures")) return "Conflicting documentation";
   if (categories.includes("missing_laterality")) return "Missing laterality";
   if (categories.includes("low_confidence")) return "Ambiguous documentation";
   if (categories.includes("unsupported_code")) return "Coder review needed";
@@ -1472,11 +1496,13 @@ function reviewIssueLabel(issue: string) {
 }
 
 function reviewMainIssue(report: AnalysisReport) {
+  const reportedIssue = reviewIssueLabel(report.report.main_issue ?? "");
+  if (reportedIssue === "Conflicting documentation" || reportedIssue === "Bundling conflict" || reportedIssue === "Missing laterality") return reportedIssue;
   if (!meaningfulCptCandidate(report)) {
     if (isGiSurgeryReview(report)) return "Procedure extent requires coding review";
     return "Coder review needed";
   }
-  return reviewIssueLabel(report.report.main_issue ?? mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info")));
+  return reportedIssue || reviewIssueLabel(mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info")));
 }
 
 function reportNarrative(report: AnalysisReport) {
@@ -1502,11 +1528,15 @@ function reportNarrative(report: AnalysisReport) {
   if (issue === "Bundling conflict") {
     return `The note is high risk because the documentation produced a possible bundled-code conflict. A human reviewer should decide which service should be billed.`;
   }
+  if (issue === "Conflicting documentation") {
+    return `The note is high risk because the procedure, findings, technique, or diagnosis appear to describe different operations. A human reviewer should resolve the mismatch before coding.`;
+  }
   return `The note is marked ${displayReviewStatus(report)} because the review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
 }
 
 function findingTitle(category: string) {
   if (category === "bundling_conflict") return "Bundling conflict detected";
+  if (category === "conflicting_documentation" || category === "conflicting_procedures") return "Conflicting documentation";
   if (category === "low_confidence") return "Low confidence coding";
   if (category === "missing_laterality") return "Missing laterality";
   if (category === "unsupported_code") return "Coder review needed";
@@ -1521,6 +1551,7 @@ function improvementForFinding(finding: AuditFinding, report?: AnalysisReport | 
   }
   if (finding.category === "low_confidence") return "Clarify the exact procedure performed and whether it was diagnostic or therapeutic.";
   if (finding.category === "bundling_conflict") return "Review whether both procedures should be billed together or select the single supported definitive code.";
+  if (finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") return "Clarify whether appendectomy or cholecystectomy was performed.";
   if (finding.category === "unsupported_code" && report && isGiSurgeryReview(report)) {
     return "Confirm bowel resection extent, anastomosis details, whether additional procedures were performed, and final CPT selection.";
   }
@@ -1532,6 +1563,7 @@ function whyImprovementMatters(finding: AuditFinding, report?: AnalysisReport | 
   if (finding.category === "missing_laterality") return "Reviewers need laterality to select LT or RT modifiers and avoid payer follow-up.";
   if (finding.category === "low_confidence") return "Clear procedure intent improves CPT selection, coding confidence, and reimbursement predictability.";
   if (finding.category === "bundling_conflict") return "Bundled services may be denied or create billing compliance risk if both codes are submitted.";
+  if (finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") return "Procedure and diagnosis mismatches can produce incorrect coding decisions unless they are resolved first.";
   if (["unsupported_code", "low_confidence"].includes(finding.category) && report && isGiSurgeryReview(report)) {
     return "Bowel surgery coding depends on the segment treated, resection extent, anastomosis, and whether any additional services are separately supported.";
   }

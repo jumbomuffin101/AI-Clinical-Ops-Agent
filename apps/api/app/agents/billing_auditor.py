@@ -10,11 +10,15 @@ class BillingAuditor:
         "hernia",
         "fistula",
         "extremity",
+        "unilateral",
         "femoral",
         "carotid",
         "angiogram",
         "angiography",
         "bypass",
+        "kidney",
+        "renal",
+        "nephrectomy",
         "breast",
         "mastectomy",
         "lumpectomy",
@@ -113,11 +117,12 @@ class BillingAuditor:
                 )
 
         if structured_note:
+            missing_section_severity = "medium" if len(structured_note.parsed_sections) >= 2 else "low"
             for section in structured_note.missing_sections:
                 findings.append(
                     AuditFinding(
                         title=f"{section} section missing",
-                        severity="low",
+                        severity=missing_section_severity,
                         category="missing_note_section",
                         related_code=None,
                         message=f"{section} section missing.",
@@ -129,6 +134,10 @@ class BillingAuditor:
                         evidence_used=[],
                     )
                 )
+
+            conflict = self._conflicting_documentation_finding(structured_note)
+            if conflict:
+                findings.append(conflict)
 
         for left, right in self.BUNDLED_CODES:
             if left in codes and right in codes:
@@ -178,4 +187,48 @@ class BillingAuditor:
             candidate.code in cls.LATERALITY_SENSITIVE_CODES
             or family in cls.LATERALITY_SENSITIVE_FAMILIES
             or any(term in combined for term in cls.LATERALITY_SENSITIVE_TERMS)
+        )
+
+    @staticmethod
+    def _conflicting_documentation_finding(structured_note: StructuredOperativeNote) -> AuditFinding | None:
+        sections = {name: text.lower() for name, text in structured_note.parsed_sections.items()}
+        if not sections:
+            return None
+
+        procedure_family = BillingAuditor._section_family(sections.get("Procedure", ""))
+        technique_family = BillingAuditor._section_family(sections.get("Technique", ""))
+        findings_family = BillingAuditor._section_family(sections.get("Findings", ""))
+        diagnosis_family = BillingAuditor._section_family(sections.get("Postoperative diagnosis", ""))
+        narrative_family = technique_family or findings_family
+
+        if procedure_family and narrative_family and procedure_family != narrative_family:
+            return BillingAuditor._conflict_finding()
+        if diagnosis_family and narrative_family and diagnosis_family != narrative_family:
+            return BillingAuditor._conflict_finding()
+        return None
+
+    @staticmethod
+    def _section_family(text: str) -> str | None:
+        if any(term in text for term in ["appendectomy", "appendix", "appendicitis"]):
+            return "appendectomy"
+        if any(term in text for term in ["cholecystectomy", "gallbladder", "gallstones", "cystic duct", "liver bed"]):
+            return "cholecystectomy"
+        if any(term in text for term in ["bowel", "ileum", "colectomy", "anastomosis", "laparotomy"]):
+            return "gi_surgery"
+        return None
+
+    @staticmethod
+    def _conflict_finding() -> AuditFinding:
+        return AuditFinding(
+            title="Conflicting documentation",
+            severity="high",
+            category="conflicting_documentation",
+            related_code=None,
+            message="Conflicting documentation detected.",
+            explanation="The documented procedure, findings, technique, or postoperative diagnosis appear to describe different operations.",
+            recommendation="Review procedure narrative and diagnosis mismatch before coding.",
+            suggested_action="Review procedure narrative and diagnosis mismatch before coding.",
+            documentation_improvement="Clarify whether appendectomy or cholecystectomy was performed.",
+            why_it_matters="Contradictory operative documentation can lead to incorrect coding and should be resolved before submission.",
+            evidence_used=[],
         )
