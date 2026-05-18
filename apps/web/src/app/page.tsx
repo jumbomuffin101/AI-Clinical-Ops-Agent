@@ -1035,6 +1035,7 @@ function AuditFindings({ report }: { report: AnalysisReport | null }) {
 
 function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
   const findings = suggestedFixFindings(report);
+  const reviewStatus = report ? displayReviewStatus(report) : "Needs Review";
   return (
     <SectionCard
       title="Suggested Fixes"
@@ -1050,7 +1051,7 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
                     <p className="text-sm font-semibold text-[#34464a]">{displayFindingTitle(finding, report)}</p>
                     <p className="mt-2 text-sm leading-6 text-[#586b69]">{improvementForFinding(finding, report)}</p>
                   </div>
-                  <StatusBadge status={finding.severity === "high" ? "High Risk" : "Needs Review"} />
+                  <StatusBadge status={suggestionBadgeStatus(finding, reviewStatus)} />
                 </div>
                 <div className="mt-4 rounded-lg bg-[#fffdfa] p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8a88]">Why this matters</p>
@@ -1070,6 +1071,11 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
       )}
     </SectionCard>
   );
+}
+
+function suggestionBadgeStatus(finding: AuditFinding, reviewStatus: string) {
+  if (reviewStatus === "High Risk" && finding.severity === "high") return "High Risk";
+  return "Needs Review";
 }
 
 function suggestedFixFindings(report: AnalysisReport | null) {
