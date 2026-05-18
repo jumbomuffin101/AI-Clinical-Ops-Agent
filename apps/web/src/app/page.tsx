@@ -744,11 +744,11 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
       {report ? (
         <>
-          <div className="mt-6 grid min-w-0 grid-cols-1 auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-[minmax(120px,0.85fr)_minmax(0,1.85fr)_minmax(160px,1.2fr)_minmax(0,2.1fr)]">
+          <div className="mt-6 grid min-w-0 grid-cols-1 auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-[140px_repeat(5,minmax(0,1fr))]">
             <SummaryMetric label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
-            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
+            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
             <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} clamp="" />
-            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
+            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
           </div>
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Coding Recommendation</p>
@@ -1047,7 +1047,7 @@ function ImprovementSuggestions({ report }: { report: AnalysisReport | null }) {
               <div key={`${finding.category}-suggestion-${index}`} className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-[#34464a]">{finding.title ?? findingTitle(finding.category)}</p>
+                    <p className="text-sm font-semibold text-[#34464a]">{displayFindingTitle(finding, report)}</p>
                     <p className="mt-2 text-sm leading-6 text-[#586b69]">{improvementForFinding(finding, report)}</p>
                   </div>
                   <StatusBadge status={finding.severity === "high" ? "High Risk" : "Needs Review"} />
@@ -1455,7 +1455,7 @@ function nextStepLabel(report: AnalysisReport) {
   const issue = reviewMainIssue(report);
   if (!meaningfulCptCandidate(report)) {
     if (isGiSurgeryReview(report)) {
-      return "Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection.";
+      return "Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection required.";
     }
     return "Confirm operative details and final CPT selection with a human coder.";
   }
@@ -1499,7 +1499,7 @@ function reviewMainIssue(report: AnalysisReport) {
   const reportedIssue = reviewIssueLabel(report.report.main_issue ?? "");
   if (reportedIssue === "Conflicting documentation" || reportedIssue === "Bundling conflict" || reportedIssue === "Missing laterality") return reportedIssue;
   if (!meaningfulCptCandidate(report)) {
-    if (isGiSurgeryReview(report)) return "Procedure extent requires coding review";
+    if (isGiSurgeryReview(report)) return "Complex procedure requires coder review";
     return "Coder review needed";
   }
   return reportedIssue || reviewIssueLabel(mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info")));
@@ -1542,6 +1542,12 @@ function findingTitle(category: string) {
   if (category === "unsupported_code") return "Coder review needed";
   if (category === "clean_claim") return "No major billing risks found";
   return readableCategory(category);
+}
+
+function displayFindingTitle(finding: AuditFinding, report: AnalysisReport) {
+  if (finding.category === "unsupported_code" && isGiSurgeryReview(report)) return "Complex procedure requires coder review";
+  if (finding.title === "Unsupported procedure" || finding.title === "Unsupported or unclear procedure") return findingTitle(finding.category);
+  return finding.title ?? findingTitle(finding.category);
 }
 
 function improvementForFinding(finding: AuditFinding, report?: AnalysisReport | null) {

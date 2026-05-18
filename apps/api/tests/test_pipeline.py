@@ -145,6 +145,34 @@ def test_vague_unsupported_procedure_needs_review_without_conflict():
 
     assert any(finding.category == "unsupported_code" for finding in findings)
     assert report["claim_readiness_status"] == "Needs Review"
+    assert report["main_issue"] == "Insufficient procedure detail"
+
+
+def test_complex_gi_unsupported_case_requires_coder_review_not_high_risk():
+    procedure = ExtractedProcedure(
+        name="Exploratory laparotomy with small bowel resection",
+        body_site="small bowel",
+        approach="open",
+        laterality=None,
+        evidence="Exploratory laparotomy with small bowel resection and stapled anastomosis.",
+        confidence=0.68,
+    )
+    candidate = CPTCodeCandidate(
+        procedure_name=procedure.name,
+        code="99999",
+        description="Complex GI surgery identified - additional coding review recommended",
+        modifiers=[],
+        rationale="Operative intent is understandable, but final CPT specificity requires coder review.",
+        confidence=0.45,
+        supported_by_docs=False,
+    )
+    findings = BillingAuditor(KeywordRetriever(ROOT / "data" / "reference_docs")).run([candidate])
+    estimates = [ReimbursementEstimate(code="99999", allowed_amount=0, source="test")]
+    _, report = ReportGenerator().run([procedure], [candidate], findings, estimates)
+
+    assert report["claim_readiness_status"] == "Needs Review"
+    assert report["main_issue"] == "Complex procedure requires coder review"
+    assert not any(finding.category == "missing_laterality" for finding in findings)
 
 
 def test_retrieval_filters_irrelevant_evidence_by_family():

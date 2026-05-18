@@ -799,15 +799,15 @@ class AnalysisService:
     @staticmethod
     def _unsupported_ai_finding() -> AuditFinding:
         return AuditFinding(
-            title="Unsupported or unclear procedure",
-            severity="high",
+            title="Complex procedure requires coder review",
+            severity="medium",
             category="unsupported_code",
-            message="Unsupported or unclear procedure.",
-            explanation="Hybrid AI mode could not confidently map the note to a supported procedure.",
-            recommendation="Clarify the operative procedure and route to coder review.",
-            suggested_action="Clarify the operative procedure and route to coder review.",
-            documentation_improvement="Document the exact procedure performed, anatomy, approach, and therapeutic intent.",
-            why_it_matters="The system should not invent a high-confidence billing code when the documented procedure is unclear.",
+            message="Complex procedure requires coder review.",
+            explanation="Hybrid AI mode identified the operative intent, but the local demo CPT library does not contain enough specificity for final code selection.",
+            recommendation="Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection.",
+            suggested_action="Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection.",
+            documentation_improvement="Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection required.",
+            why_it_matters="Complex GI procedures often require coder confirmation because CPT selection depends on operative extent and separately supported services.",
             evidence_used=[],
         )
 

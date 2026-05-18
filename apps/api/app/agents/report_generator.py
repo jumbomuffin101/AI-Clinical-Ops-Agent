@@ -135,10 +135,10 @@ class ReportGenerator:
             main_issue = "Conflicting documentation"
         elif "missing_laterality" in categories:
             main_issue = "Missing laterality"
+        elif "unsupported_code" in categories:
+            main_issue = ReportGenerator._unsupported_main_issue(candidates)
         elif "low_confidence" in categories:
             main_issue = "Ambiguous documentation"
-        elif "unsupported_code" in categories:
-            main_issue = "Unsupported procedure"
         else:
             main_issue = "No major issues"
 
@@ -181,3 +181,12 @@ class ReportGenerator:
             "recommended_action": recommended_action,
             "main_issue": main_issue,
         }
+
+    @staticmethod
+    def _unsupported_main_issue(candidates: list[CPTCodeCandidate]) -> str:
+        procedure_text = " ".join(f"{candidate.procedure_name} {candidate.description}" for candidate in candidates).lower()
+        if any(term in procedure_text for term in ["laparotomy", "bowel", "colectomy", "anastomosis", "enterectomy", "gi surgery"]):
+            return "Complex procedure requires coder review"
+        if "unclassified operative procedure" in procedure_text:
+            return "Insufficient procedure detail"
+        return "Coder confirmation needed"
