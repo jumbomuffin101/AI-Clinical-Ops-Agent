@@ -245,9 +245,9 @@ Postoperative diagnosis: Acute appendicitis."""
     assert response.status_code == 201
     body = response.json()
     assert body["report"]["claim_readiness_status"] == "High Risk"
-    assert body["report"]["main_issue"] == "Procedure-documentation mismatch"
-    assert body["report"]["recommended_action"] == "Procedure and findings describe different services. Confirm final operative procedure before coding."
-    conflict = next(finding for finding in body["audit_findings"] if finding["category"] == "conflicting_documentation")
+    assert body["report"]["main_issue"] == "Procedure documentation conflict"
+    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+    conflict = next(finding for finding in body["audit_findings"] if finding["category"] == "procedure_documentation_conflict")
     assert conflict["documentation_improvement"] == "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service."
 
 

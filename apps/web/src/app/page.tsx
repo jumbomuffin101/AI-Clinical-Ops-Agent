@@ -1465,7 +1465,7 @@ function nextStepLabel(report: AnalysisReport) {
     }
     return "Confirm operative details and final CPT selection with a human coder.";
   }
-  if (issue === "Procedure-documentation mismatch") return "Procedure and findings describe different services. Confirm final operative procedure before coding.";
+  if (issue === "Procedure documentation conflict") return "Confirm final operative procedure before coding.";
   if (issue === "Missing laterality") return "Clarify left or right side before review.";
   if (issue === "Bundling conflict") return "Confirm which service should be billed before submission.";
   if (issue === "Ambiguous documentation") return "Clarify the procedure intent and operative extent.";
@@ -1489,7 +1489,7 @@ function hasSevereBillingRisk(report: AnalysisReport) {
 function mainIssue(findings: AuditFinding[]) {
   const categories = findings.map((finding) => finding.category);
   if (categories.includes("bundling_conflict")) return "Bundling conflict";
-  if (categories.includes("conflicting_documentation") || categories.includes("conflicting_procedures")) return "Procedure-documentation mismatch";
+  if (categories.includes("procedure_documentation_conflict") || categories.includes("conflicting_documentation") || categories.includes("conflicting_procedures")) return "Procedure documentation conflict";
   if (categories.includes("missing_laterality")) return "Missing laterality";
   if (categories.includes("low_confidence")) return "Ambiguous documentation";
   if (categories.includes("unsupported_code")) return "Coder review needed";
@@ -1503,8 +1503,8 @@ function reviewIssueLabel(issue: string) {
 
 function reviewMainIssue(report: AnalysisReport) {
   const reportedIssue = reviewIssueLabel(report.report.main_issue ?? "");
-  if (reportedIssue === "Procedure-documentation mismatch" || reportedIssue === "Conflicting documentation" || reportedIssue === "Bundling conflict" || reportedIssue === "Missing laterality") {
-    return reportedIssue === "Conflicting documentation" ? "Procedure-documentation mismatch" : reportedIssue;
+  if (reportedIssue === "Procedure documentation conflict" || reportedIssue === "Procedure-documentation mismatch" || reportedIssue === "Conflicting documentation" || reportedIssue === "Bundling conflict" || reportedIssue === "Missing laterality") {
+    return ["Procedure-documentation mismatch", "Conflicting documentation"].includes(reportedIssue) ? "Procedure documentation conflict" : reportedIssue;
   }
   if (!meaningfulCptCandidate(report)) {
     if (isGiSurgeryReview(report)) return "Complex procedure requires coder review";
@@ -1536,15 +1536,15 @@ function reportNarrative(report: AnalysisReport) {
   if (issue === "Bundling conflict") {
     return `The note is high risk because the documentation produced a possible bundled-code conflict. A human reviewer should decide which service should be billed.`;
   }
-  if (issue === "Procedure-documentation mismatch") {
-    return `The note is high risk because the procedure and findings appear to describe different services. Confirm the final operative procedure before coding.`;
+  if (issue === "Procedure documentation conflict") {
+    return `The note is high risk because the documented procedure and operative details describe different surgeries. Coding should not proceed until the documentation is reconciled.`;
   }
   return `The note is marked ${displayReviewStatus(report)} because the review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
 }
 
 function findingTitle(category: string) {
   if (category === "bundling_conflict") return "Bundling conflict detected";
-  if (category === "conflicting_documentation" || category === "conflicting_procedures") return "Procedure-documentation mismatch";
+  if (category === "procedure_documentation_conflict" || category === "conflicting_documentation" || category === "conflicting_procedures") return "Procedure documentation conflict";
   if (category === "low_confidence") return "Low confidence coding";
   if (category === "missing_laterality") return "Missing laterality";
   if (category === "unsupported_code") return "Coder review needed";
@@ -1565,7 +1565,9 @@ function improvementForFinding(finding: AuditFinding, report?: AnalysisReport | 
   }
   if (finding.category === "low_confidence") return "Clarify the exact procedure performed and whether it was diagnostic or therapeutic.";
   if (finding.category === "bundling_conflict") return "Review whether both procedures should be billed together or select the single supported definitive code.";
-  if (finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") return "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service.";
+  if (finding.category === "procedure_documentation_conflict" || finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") {
+    return "Clarify whether the procedure, findings, technique, and postoperative diagnosis describe the same service.";
+  }
   if (finding.category === "unsupported_code" && report && isGiSurgeryReview(report)) {
     return "Confirm bowel resection extent, anastomosis details, whether additional procedures were performed, and final CPT selection.";
   }
@@ -1577,7 +1579,9 @@ function whyImprovementMatters(finding: AuditFinding, report?: AnalysisReport | 
   if (finding.category === "missing_laterality") return "Reviewers need laterality to select LT or RT modifiers and avoid payer follow-up.";
   if (finding.category === "low_confidence") return "Clear procedure intent improves CPT selection, coding confidence, and reimbursement predictability.";
   if (finding.category === "bundling_conflict") return "Bundled services may be denied or create billing compliance risk if both codes are submitted.";
-  if (finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") return "Procedure and diagnosis mismatches can produce incorrect coding decisions unless they are resolved first.";
+  if (finding.category === "procedure_documentation_conflict" || finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") {
+    return "Procedure and diagnosis mismatches can produce incorrect coding decisions unless they are resolved first.";
+  }
   if (["unsupported_code", "low_confidence"].includes(finding.category) && report && isGiSurgeryReview(report)) {
     return "Bowel surgery coding depends on the segment treated, resection extent, anastomosis, and whether any additional services are separately supported.";
   }

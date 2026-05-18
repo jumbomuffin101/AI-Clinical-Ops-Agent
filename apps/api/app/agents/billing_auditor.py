@@ -220,14 +220,14 @@ class BillingAuditor:
     @staticmethod
     def _conflict_finding() -> AuditFinding:
         return AuditFinding(
-            title="Procedure-documentation mismatch",
+            title="Procedure documentation conflict",
             severity="high",
-            category="conflicting_documentation",
+            category="procedure_documentation_conflict",
             related_code=None,
-            message="Procedure-documentation mismatch detected.",
+            message="Procedure documentation conflict detected.",
             explanation="The documented procedure, findings, technique, or postoperative diagnosis appear to describe different operations.",
-            recommendation="Procedure and findings describe different services. Confirm final operative procedure before coding.",
-            suggested_action="Procedure and findings describe different services. Confirm final operative procedure before coding.",
+            recommendation="Confirm final operative procedure before coding.",
+            suggested_action="Confirm final operative procedure before coding.",
             documentation_improvement="Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service.",
             why_it_matters="Contradictory operative documentation can lead to incorrect coding and should be resolved before submission.",
             evidence_used=[],

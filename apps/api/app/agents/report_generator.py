@@ -84,25 +84,15 @@ class ReportGenerator:
         categories = {finding.category for finding in findings if finding.severity != "info"}
         high_risk_categories = {
             "bundling_conflict",
+            "procedure_documentation_conflict",
             "conflicting_documentation",
             "conflicting_procedures",
+            "mutually_exclusive_procedures",
             "unsupported_cpt_combination",
             "compliance_risk",
             "severe_ambiguity",
         }
-        high_risk_keywords = ("bundling", "conflict", "compliance", "severe ambiguity", "unsafe combination")
-        has_high_risk_finding = any(
-            finding.category in high_risk_categories
-            or (
-                finding.severity == "high"
-                and finding.category not in {"missing_laterality", "missing_note_section", "low_confidence", "unsupported_code"}
-                and any(
-                    keyword in f"{finding.title or ''} {finding.message} {finding.explanation or ''}".lower()
-                    for keyword in high_risk_keywords
-                )
-            )
-            for finding in findings
-        )
+        has_high_risk_finding = any(finding.category in high_risk_categories for finding in findings)
         needs_review_categories = {
             "missing_laterality",
             "incomplete_documentation",
@@ -135,8 +125,8 @@ class ReportGenerator:
 
         if "bundling_conflict" in categories:
             main_issue = "Bundling conflict"
-        elif "conflicting_documentation" in categories or "conflicting_procedures" in categories:
-            main_issue = "Procedure-documentation mismatch"
+        elif {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"} & categories:
+            main_issue = "Procedure documentation conflict"
         elif "missing_laterality" in categories:
             main_issue = "Missing laterality"
         elif "unsupported_code" in categories:
@@ -146,8 +136,8 @@ class ReportGenerator:
         else:
             main_issue = "No major issues"
 
-        if main_issue == "Procedure-documentation mismatch":
-            recommended_action = "Procedure and findings describe different services. Confirm final operative procedure before coding."
+        if main_issue == "Procedure documentation conflict":
+            recommended_action = "Confirm final operative procedure before coding."
         elif main_issue == "Missing laterality":
             recommended_action = "Clarify left or right side before review."
         elif status == "Ready":

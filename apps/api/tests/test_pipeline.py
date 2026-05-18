@@ -136,9 +136,9 @@ Postoperative diagnosis: Acute cholecystitis."""
     estimates = [ReimbursementEstimate(code=candidate.code, allowed_amount=1000, source="test") for candidate in candidates]
     _, report = ReportGenerator().run(procedures, candidates, findings, estimates)
 
-    assert any(finding.category == "conflicting_documentation" for finding in findings)
+    assert any(finding.category == "procedure_documentation_conflict" for finding in findings)
     assert report["claim_readiness_status"] == "High Risk"
-    assert report["main_issue"] == "Procedure-documentation mismatch"
+    assert report["main_issue"] == "Procedure documentation conflict"
 
 
 def test_vague_unsupported_procedure_needs_review_without_conflict():
