@@ -4,6 +4,12 @@ from app.rag.retriever import KeywordRetriever
 
 class BillingAuditor:
     BUNDLED_CODES = {("47562", "47563")}
+    PROCEDURE_CONCEPT_GROUPS = {
+        "appendectomy": ["appendix", "appendectomy", "mesoappendix", "appendicitis"],
+        "cholecystectomy": ["gallbladder", "cholecystectomy", "cystic duct", "cystic artery", "gallstones"],
+        "hernia": ["hernia", "mesh repair", "inguinal ligament"],
+        "bowel_resection": ["bowel resection", "anastomosis", "ileum", "colectomy", "small bowel"],
+    }
     LATERALITY_SENSITIVE_CODES = {"36821", "35371", "35301", "49505", "75710"}
     LATERALITY_SENSITIVE_FAMILIES = {"vascular_access", "vascular_surgery", "angiography", "hernia", "orthopedics", "breast", "eye"}
     LATERALITY_SENSITIVE_TERMS = {
@@ -195,27 +201,24 @@ class BillingAuditor:
         if not sections:
             return None
 
-        procedure_family = BillingAuditor._section_family(sections.get("Procedure", ""))
-        technique_family = BillingAuditor._section_family(sections.get("Technique", ""))
-        findings_family = BillingAuditor._section_family(sections.get("Findings", ""))
-        diagnosis_family = BillingAuditor._section_family(sections.get("Postoperative diagnosis", ""))
-        narrative_family = technique_family or findings_family
+        procedure_concepts = BillingAuditor._section_concepts(sections.get("Procedure", ""))
+        diagnosis_concepts = BillingAuditor._section_concepts(sections.get("Postoperative diagnosis", ""))
+        narrative_concepts = BillingAuditor._section_concepts(" ".join([sections.get("Findings", ""), sections.get("Technique", "")]))
+        declared_concepts = procedure_concepts or diagnosis_concepts
 
-        if procedure_family and narrative_family and procedure_family != narrative_family:
+        if declared_concepts and narrative_concepts and declared_concepts.isdisjoint(narrative_concepts):
             return BillingAuditor._conflict_finding()
-        if diagnosis_family and narrative_family and diagnosis_family != narrative_family:
+        if procedure_concepts and diagnosis_concepts and procedure_concepts.isdisjoint(diagnosis_concepts):
             return BillingAuditor._conflict_finding()
         return None
 
-    @staticmethod
-    def _section_family(text: str) -> str | None:
-        if any(term in text for term in ["appendectomy", "appendix", "appendicitis"]):
-            return "appendectomy"
-        if any(term in text for term in ["cholecystectomy", "gallbladder", "gallstones", "cystic duct", "liver bed"]):
-            return "cholecystectomy"
-        if any(term in text for term in ["bowel", "ileum", "colectomy", "anastomosis", "laparotomy"]):
-            return "gi_surgery"
-        return None
+    @classmethod
+    def _section_concepts(cls, text: str) -> set[str]:
+        return {
+            concept
+            for concept, terms in cls.PROCEDURE_CONCEPT_GROUPS.items()
+            if any(term in text for term in terms)
+        }
 
     @staticmethod
     def _conflict_finding() -> AuditFinding:

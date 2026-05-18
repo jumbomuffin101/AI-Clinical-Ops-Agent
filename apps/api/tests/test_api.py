@@ -218,6 +218,26 @@ def test_missing_laterality_is_needs_review_not_high_risk(client):
     assert body["report"]["recommended_action"] == "Clarify left or right side before review."
 
 
+def test_sectioned_hernia_missing_laterality_is_needs_review(client):
+    note = """Procedure: Open inguinal hernia repair with mesh.
+
+Indication: Synthetic patient with symptomatic inguinal hernia.
+
+Findings: Indirect inguinal hernia.
+
+Technique: Groin incision was made. Hernia sac was reduced and mesh was secured to the inguinal ligament and conjoint tendon.
+
+Complications: None."""
+    response = client.post("/api/notes", json={"title": "Sectioned missing hernia side", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "Needs Review"
+    assert body["report"]["main_issue"] == "Missing laterality"
+    assert body["cpt_candidates"][0]["code"] == "49505"
+    assert any(finding["category"] == "missing_laterality" for finding in body["audit_findings"])
+
+
 def test_appendectomy_ready_without_laterality_finding(client):
     note = (
         "Title: Laparoscopic appendectomy. Procedure: Laparoscopic appendectomy. "
