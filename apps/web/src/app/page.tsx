@@ -744,11 +744,11 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
       {report ? (
         <>
-          <div className="mt-6 grid min-w-0 grid-cols-1 auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-[140px_repeat(5,minmax(0,1fr))]">
+          <div className="mt-6 grid min-w-0 grid-cols-1 auto-rows-fr gap-4 md:grid-cols-2">
             <SummaryMetric label="Review Status" value={displayReviewStatus(report)} status={displayReviewStatus(report)} />
-            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
+            <SummaryMetric label="Detected Procedure" value={detectedProcedureLabel(report)} title={detectedProcedureLabel(report)} clamp="" />
             <SummaryMetric label="Main Issue" value={reviewMainIssue(report)} clamp="" />
-            <SummaryMetric className="md:col-span-2 xl:col-span-2" label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
+            <SummaryMetric label="Recommended Next Step" value={nextStepLabel(report)} title={nextStepLabel(report)} clamp="" />
           </div>
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Coding Recommendation</p>

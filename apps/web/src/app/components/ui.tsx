@@ -68,7 +68,7 @@ export function SummaryMetric({
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
       <p
         title={title ?? value}
-        className={`mt-2 min-w-0 whitespace-normal [overflow-wrap:break-word] [word-break:normal] text-lg font-semibold leading-6 ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}
+        className={`mt-2 min-w-0 whitespace-normal [overflow-wrap:break-word] [word-break:normal] text-lg font-semibold leading-[1.45] ${clamp} ${statusStyles?.text ?? "text-[#17343c]"}`}
       >
         {value}
       </p>
