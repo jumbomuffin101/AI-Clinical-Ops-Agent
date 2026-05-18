@@ -117,9 +117,13 @@ class ReportGenerator:
         )
         non_blocking_categories = {"clean_claim", "missing_note_section"}
         has_actionable_findings = any(category not in non_blocking_categories for category in categories)
+        only_missing_laterality_major_issue = bool(missing_laterality_count) and categories.issubset({"missing_laterality", "missing_note_section"})
 
         score = max(0, min(100, score))
-        if has_high_risk_finding:
+        if only_missing_laterality_major_issue:
+            status = "Needs Review"
+            status_key = "needs_review"
+        elif has_high_risk_finding:
             status = "High Risk"
             status_key = "high_risk"
         elif has_needs_review_finding or has_actionable_findings or unsupported_count or score < 85:
@@ -132,7 +136,7 @@ class ReportGenerator:
         if "bundling_conflict" in categories:
             main_issue = "Bundling conflict"
         elif "conflicting_documentation" in categories or "conflicting_procedures" in categories:
-            main_issue = "Conflicting documentation"
+            main_issue = "Procedure-documentation mismatch"
         elif "missing_laterality" in categories:
             main_issue = "Missing laterality"
         elif "unsupported_code" in categories:
@@ -142,8 +146,10 @@ class ReportGenerator:
         else:
             main_issue = "No major issues"
 
-        if main_issue == "Conflicting documentation":
-            recommended_action = "Review procedure narrative and diagnosis mismatch before coding."
+        if main_issue == "Procedure-documentation mismatch":
+            recommended_action = "Procedure and findings describe different services. Confirm final operative procedure before coding."
+        elif main_issue == "Missing laterality":
+            recommended_action = "Clarify left or right side before review."
         elif status == "Ready":
             recommended_action = "Proceed with standard billing review."
         elif status == "Needs Review":

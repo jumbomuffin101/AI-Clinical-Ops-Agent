@@ -1465,8 +1465,8 @@ function nextStepLabel(report: AnalysisReport) {
     }
     return "Confirm operative details and final CPT selection with a human coder.";
   }
-  if (issue === "Conflicting documentation") return "Review procedure narrative and diagnosis mismatch before coding.";
-  if (issue === "Missing laterality") return "Clarify left or right side before clinical operations review.";
+  if (issue === "Procedure-documentation mismatch") return "Procedure and findings describe different services. Confirm final operative procedure before coding.";
+  if (issue === "Missing laterality") return "Clarify left or right side before review.";
   if (issue === "Bundling conflict") return "Confirm which service should be billed before submission.";
   if (issue === "Ambiguous documentation") return "Clarify the procedure intent and operative extent.";
   return report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status);
@@ -1489,7 +1489,7 @@ function hasSevereBillingRisk(report: AnalysisReport) {
 function mainIssue(findings: AuditFinding[]) {
   const categories = findings.map((finding) => finding.category);
   if (categories.includes("bundling_conflict")) return "Bundling conflict";
-  if (categories.includes("conflicting_documentation") || categories.includes("conflicting_procedures")) return "Conflicting documentation";
+  if (categories.includes("conflicting_documentation") || categories.includes("conflicting_procedures")) return "Procedure-documentation mismatch";
   if (categories.includes("missing_laterality")) return "Missing laterality";
   if (categories.includes("low_confidence")) return "Ambiguous documentation";
   if (categories.includes("unsupported_code")) return "Coder review needed";
@@ -1503,7 +1503,9 @@ function reviewIssueLabel(issue: string) {
 
 function reviewMainIssue(report: AnalysisReport) {
   const reportedIssue = reviewIssueLabel(report.report.main_issue ?? "");
-  if (reportedIssue === "Conflicting documentation" || reportedIssue === "Bundling conflict" || reportedIssue === "Missing laterality") return reportedIssue;
+  if (reportedIssue === "Procedure-documentation mismatch" || reportedIssue === "Conflicting documentation" || reportedIssue === "Bundling conflict" || reportedIssue === "Missing laterality") {
+    return reportedIssue === "Conflicting documentation" ? "Procedure-documentation mismatch" : reportedIssue;
+  }
   if (!meaningfulCptCandidate(report)) {
     if (isGiSurgeryReview(report)) return "Complex procedure requires coder review";
     return "Coder review needed";
@@ -1534,15 +1536,15 @@ function reportNarrative(report: AnalysisReport) {
   if (issue === "Bundling conflict") {
     return `The note is high risk because the documentation produced a possible bundled-code conflict. A human reviewer should decide which service should be billed.`;
   }
-  if (issue === "Conflicting documentation") {
-    return `The note is high risk because the procedure, findings, technique, or diagnosis appear to describe different operations. A human reviewer should resolve the mismatch before coding.`;
+  if (issue === "Procedure-documentation mismatch") {
+    return `The note is high risk because the procedure and findings appear to describe different services. Confirm the final operative procedure before coding.`;
   }
   return `The note is marked ${displayReviewStatus(report)} because the review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
 }
 
 function findingTitle(category: string) {
   if (category === "bundling_conflict") return "Bundling conflict detected";
-  if (category === "conflicting_documentation" || category === "conflicting_procedures") return "Conflicting documentation";
+  if (category === "conflicting_documentation" || category === "conflicting_procedures") return "Procedure-documentation mismatch";
   if (category === "low_confidence") return "Low confidence coding";
   if (category === "missing_laterality") return "Missing laterality";
   if (category === "unsupported_code") return "Coder review needed";
@@ -1563,7 +1565,7 @@ function improvementForFinding(finding: AuditFinding, report?: AnalysisReport | 
   }
   if (finding.category === "low_confidence") return "Clarify the exact procedure performed and whether it was diagnostic or therapeutic.";
   if (finding.category === "bundling_conflict") return "Review whether both procedures should be billed together or select the single supported definitive code.";
-  if (finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") return "Clarify whether appendectomy or cholecystectomy was performed.";
+  if (finding.category === "conflicting_documentation" || finding.category === "conflicting_procedures") return "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service.";
   if (finding.category === "unsupported_code" && report && isGiSurgeryReview(report)) {
     return "Confirm bowel resection extent, anastomosis details, whether additional procedures were performed, and final CPT selection.";
   }

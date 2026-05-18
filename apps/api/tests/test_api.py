@@ -197,7 +197,7 @@ def test_missing_laterality_is_not_ready(client):
     body = response.json()
     assert body["report"]["claim_readiness_status"] != "Ready"
     assert body["report"]["main_issue"] == "Missing laterality"
-    assert body["report"]["recommended_action"] == "Clarify documentation before submission."
+    assert body["report"]["recommended_action"] == "Clarify left or right side before review."
     assert body["cpt_candidates"][0]["modifiers"] == []
     missing_laterality = next(finding for finding in body["audit_findings"] if finding["category"] == "missing_laterality")
     assert missing_laterality["documentation_improvement"] == "Document whether the procedure was performed on the left or right side."
@@ -215,6 +215,7 @@ def test_missing_laterality_is_needs_review_not_high_risk(client):
     body = response.json()
     assert body["report"]["claim_readiness_status"] == "Needs Review"
     assert body["report"]["main_issue"] == "Missing laterality"
+    assert body["report"]["recommended_action"] == "Clarify left or right side before review."
 
 
 def test_appendectomy_ready_without_laterality_finding(client):
@@ -244,10 +245,10 @@ Postoperative diagnosis: Acute appendicitis."""
     assert response.status_code == 201
     body = response.json()
     assert body["report"]["claim_readiness_status"] == "High Risk"
-    assert body["report"]["main_issue"] == "Conflicting documentation"
-    assert body["report"]["recommended_action"] == "Review procedure narrative and diagnosis mismatch before coding."
+    assert body["report"]["main_issue"] == "Procedure-documentation mismatch"
+    assert body["report"]["recommended_action"] == "Procedure and findings describe different services. Confirm final operative procedure before coding."
     conflict = next(finding for finding in body["audit_findings"] if finding["category"] == "conflicting_documentation")
-    assert conflict["documentation_improvement"] == "Clarify whether appendectomy or cholecystectomy was performed."
+    assert conflict["documentation_improvement"] == "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service."
 
 
 def test_revised_note_workflow_improves_readiness(client):

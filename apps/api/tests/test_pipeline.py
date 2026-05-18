@@ -121,6 +121,26 @@ def test_cholecystectomy_bundling_conflict_is_high_risk():
     assert report["claim_readiness_status"] == "High Risk"
 
 
+def test_cholecystectomy_procedure_with_appendix_narrative_is_mismatch():
+    from app.parsing.note_parser import OperativeNoteParser
+
+    note = """Procedure: Laparoscopic cholecystectomy.
+Findings: Inflamed appendix without perforation.
+Technique: The appendix was divided with a stapler and removed laparoscopically.
+Postoperative diagnosis: Acute cholecystitis."""
+    structured_note = OperativeNoteParser().parse(note)
+    retriever = KeywordRetriever(ROOT / "data" / "reference_docs")
+    procedures = ProcedureExtractor(MockLLMProvider()).run(note, structured_note)
+    candidates = CPTCoder(retriever).run(procedures)
+    findings = BillingAuditor(retriever).run(candidates, structured_note)
+    estimates = [ReimbursementEstimate(code=candidate.code, allowed_amount=1000, source="test") for candidate in candidates]
+    _, report = ReportGenerator().run(procedures, candidates, findings, estimates)
+
+    assert any(finding.category == "conflicting_documentation" for finding in findings)
+    assert report["claim_readiness_status"] == "High Risk"
+    assert report["main_issue"] == "Procedure-documentation mismatch"
+
+
 def test_vague_unsupported_procedure_needs_review_without_conflict():
     procedure = ExtractedProcedure(
         name="Unclassified operative procedure",
