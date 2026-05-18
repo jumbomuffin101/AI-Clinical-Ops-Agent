@@ -78,6 +78,7 @@ class AnalysisService:
             findings.append(self._unsupported_ai_finding())
         estimates = self.estimator.run(candidates)
         summary, report = self.report_generator.run(procedures, candidates, findings, estimates)
+        self._apply_review_priority(report, findings)
         report["structured_note"] = structured_note.model_dump()
         report["analysis_mode"] = "Hybrid AI mode" if ai_analysis else "Rules mode"
         report["ai_assist_status"] = ai_status
@@ -116,6 +117,30 @@ class AnalysisService:
         db.commit()
         db.refresh(analysis)
         return self.get_analysis(db, UUID(analysis.id))
+
+    @staticmethod
+    def _apply_review_priority(report: dict, findings: list[AuditFinding]) -> None:
+        categories = {finding.category for finding in findings if finding.severity != "info"}
+        if {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"} & categories:
+            report["claim_readiness_status"] = "High Risk"
+            report["claim_readiness"] = "high_risk"
+            report["main_issue"] = "Procedure documentation conflict"
+            report["recommended_action"] = "Confirm final operative procedure before coding."
+            return
+        if "bundling_conflict" in categories:
+            report["claim_readiness_status"] = "High Risk"
+            report["claim_readiness"] = "high_risk"
+            report["main_issue"] = "Bundling conflict"
+            return
+        if {"mutually_exclusive_procedures", "unsupported_cpt_combination", "compliance_risk", "severe_ambiguity"} & categories:
+            report["claim_readiness_status"] = "High Risk"
+            report["claim_readiness"] = "high_risk"
+            return
+        if "missing_laterality" in categories:
+            report["claim_readiness_status"] = "Needs Review"
+            report["claim_readiness"] = "needs_review"
+            report["main_issue"] = "Missing laterality"
+            report["recommended_action"] = "Clarify left or right side before review."
 
     def get_analysis(self, db: Session, analysis_id: UUID) -> AnalysisReport:
         analysis = db.get(models.Analysis, str(analysis_id))

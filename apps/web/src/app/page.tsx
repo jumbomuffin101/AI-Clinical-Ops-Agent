@@ -1474,15 +1474,24 @@ function nextStepLabel(report: AnalysisReport) {
 
 function displayReviewStatus(report: AnalysisReport) {
   if (report.report.claim_readiness_status !== "High Risk") return report.report.claim_readiness_status;
+  if (reviewMainIssue(report) === "Missing laterality" && !hasSevereBillingRisk(report)) return "Needs Review";
   if (!meaningfulCptCandidate(report) && !hasSevereBillingRisk(report)) return "Needs Review";
   return "High Risk";
 }
 
 function hasSevereBillingRisk(report: AnalysisReport) {
+  const severeCategories = new Set([
+    "bundling_conflict",
+    "procedure_documentation_conflict",
+    "conflicting_documentation",
+    "conflicting_procedures",
+    "mutually_exclusive_procedures",
+    "unsupported_cpt_combination",
+    "compliance_risk",
+    "severe_ambiguity",
+  ]);
   return report.audit_findings.some((finding) => {
-    if (finding.category === "bundling_conflict") return true;
-    if (finding.category === "unsupported_code") return false;
-    return finding.severity === "high";
+    return severeCategories.has(finding.category);
   });
 }
 
