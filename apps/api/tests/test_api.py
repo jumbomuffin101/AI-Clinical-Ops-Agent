@@ -285,12 +285,14 @@ Postoperative diagnosis: Acute appendicitis."""
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
+    assert body["report"]["coding_recommendation"] == "Coder review needed"
+    assert body["report"]["suggested_code"] is None
     assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding"
     conflict = next(finding for finding in body["audit_findings"] if finding["category"] == "procedure_documentation_conflict")
     assert conflict["documentation_improvement"] == "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service."
 
 
-def test_exact_appendectomy_gallbladder_contradiction_forces_high_risk(client):
+def test_headerAppendix_techniqueGallbladder_shouldConflict(client):
     note = """Procedure: Laparoscopic appendectomy.
 Findings: Gallstones with inflamed gallbladder.
 Technique: Gallbladder was dissected from the liver bed and removed.
@@ -302,6 +304,8 @@ Postoperative diagnosis: Acute appendicitis."""
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
+    assert body["report"]["coding_recommendation"] == "Coder review needed"
+    assert body["report"]["suggested_code"] is None
 
 
 def test_appendectomy_procedure_with_gallbladder_technique_is_high_risk(client):
@@ -329,7 +333,7 @@ def test_unrelated_procedure_families_without_section_conflict_is_not_auto_high_
     assert not any(finding["category"] == "procedure_documentation_conflict" for finding in body["audit_findings"])
 
 
-def test_unrelated_procedure_families_with_combined_intent_is_allowed(client):
+def test_explicitCombinedProcedure_shouldPass(client):
     note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
 Findings: Inflamed appendix and gallstones.
 Technique: The appendix was removed and the gallbladder was dissected from the liver bed and removed.
@@ -358,7 +362,7 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding"
 
 
-def test_exact_cholecystectomy_appendix_contradiction_forces_high_risk(client):
+def test_headerGallbladder_techniqueAppendix_shouldConflict(client):
     note = """Procedure: Laparoscopic cholecystectomy.
 Findings: Inflamed appendix in the right lower quadrant.
 Technique: The appendix was divided at the base with a stapler and removed in a retrieval bag.

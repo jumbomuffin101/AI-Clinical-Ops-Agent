@@ -32,7 +32,7 @@ from app.parsing.note_parser import OperativeNoteParser
 from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
 from app.safety.phi_detector import contains_phi_like_identifier
-from app.services.review_engine import ReviewClassification, ReviewEngine
+from app.services.review_engine import ProcedureFamily, ReviewClassification, ReviewEngine
 
 
 logger = logging.getLogger(__name__)
@@ -212,7 +212,7 @@ class AnalysisService:
         )
 
     @staticmethod
-    def classify_section_family(section_text: str) -> str | None:
+    def classify_section_family(section_text: str) -> ProcedureFamily | None:
         return ReviewEngine.classify_section_family(section_text)
 
     @classmethod
@@ -226,14 +226,18 @@ class AnalysisService:
             findings_family=classification.findings_family,
             technique_family=classification.technique_family,
             postop_family=classification.postop_family,
-            procedure_header_procedures=sorted(classification.procedure_header_procedures),
-            findings_procedures=sorted(classification.findings_procedures),
-            technique_procedures=sorted(classification.technique_procedures),
-            diagnosis_procedures=sorted(classification.diagnosis_procedures),
+            procedure_header_procedures=AnalysisService._family_values(classification.procedure_header_procedures),
+            findings_procedures=AnalysisService._family_values(classification.findings_procedures),
+            technique_procedures=AnalysisService._family_values(classification.technique_procedures),
+            diagnosis_procedures=AnalysisService._family_values(classification.diagnosis_procedures),
             procedure_conflict=classification.procedure_conflict,
             final_review_status=report.get("claim_readiness_status"),
             final_main_issue=report.get("main_issue"),
         )
+
+    @staticmethod
+    def _family_values(families: set[ProcedureFamily]) -> list[str]:
+        return sorted(family.value for family in families)
 
     def get_analysis(self, db: Session, analysis_id: UUID) -> AnalysisReport:
         analysis = db.get(models.Analysis, str(analysis_id))

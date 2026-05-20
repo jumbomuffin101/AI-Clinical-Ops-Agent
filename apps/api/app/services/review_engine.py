@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from enum import StrEnum
 
 from app.logging_utils import log_event
 from app.models.schemas import AuditFinding, CPTCodeCandidate, StructuredOperativeNote
@@ -8,30 +9,42 @@ from app.models.schemas import AuditFinding, CPTCodeCandidate, StructuredOperati
 logger = logging.getLogger(__name__)
 
 
+class ProcedureFamily(StrEnum):
+    APPENDECTOMY = "APPENDECTOMY"
+    CHOLECYSTECTOMY = "CHOLECYSTECTOMY"
+    HERNIA_REPAIR = "HERNIA_REPAIR"
+    BOWEL_RESECTION = "BOWEL_RESECTION"
+    AV_FISTULA = "AV_FISTULA"
+    OTHER = "OTHER"
+
+
 @dataclass(frozen=True)
 class ReviewClassification:
-    procedure_family: str | None
-    findings_family: str | None
-    technique_family: str | None
-    postop_family: str | None
-    procedure_header_procedures: set[str]
-    findings_procedures: set[str]
-    technique_procedures: set[str]
-    diagnosis_procedures: set[str]
+    header_family: ProcedureFamily | None
+    technique_family: ProcedureFamily | None
+    diagnosis_family: ProcedureFamily | None
+    procedure_family: ProcedureFamily | None
+    findings_family: ProcedureFamily | None
+    postop_family: ProcedureFamily | None
+    procedure_header_procedures: set[ProcedureFamily]
+    findings_procedures: set[ProcedureFamily]
+    technique_procedures: set[ProcedureFamily]
+    diagnosis_procedures: set[ProcedureFamily]
     procedure_conflict: bool
     conflict_reason: str | None
+    valid_combined_procedure: bool
     explicit_multi_procedure_intent: bool
 
 
 class ReviewEngine:
     FAMILY_KEYWORDS = {
-        "appendectomy": [
+        ProcedureFamily.APPENDECTOMY: [
             "appendectomy",
             "appendix",
             "mesoappendix",
             "right lower quadrant",
         ],
-        "cholecystectomy": [
+        ProcedureFamily.CHOLECYSTECTOMY: [
             "cholecystectomy",
             "gallbladder",
             "gallstones",
@@ -40,14 +53,14 @@ class ReviewEngine:
             "cystic artery",
             "liver bed",
         ],
-        "hernia": [
+        ProcedureFamily.HERNIA_REPAIR: [
             "hernia",
             "inguinal",
             "mesh",
             "inguinal ligament",
             "conjoint tendon",
         ],
-        "bowel_resection": [
+        ProcedureFamily.BOWEL_RESECTION: [
             "bowel resection",
             "small bowel",
             "ileum",
@@ -55,25 +68,25 @@ class ReviewEngine:
             "anastomosis",
             "colectomy",
         ],
+        ProcedureFamily.AV_FISTULA: [
+            "av fistula",
+            "arteriovenous fistula",
+            "cephalic vein",
+            "radial artery",
+            "dialysis access",
+        ],
     }
     PROCEDURE_NAME_FAMILIES = {
-        "AV fistula creation": "vascular",
-        "Femoral endarterectomy": "vascular",
-        "Carotid endarterectomy": "vascular",
-        "Lower extremity angiogram": "vascular",
-        "Lower extremity vascular bypass": "vascular",
-        "Laparoscopic cholecystectomy": "cholecystectomy",
-        "Laparoscopic cholecystectomy with cholangiography": "cholecystectomy",
-        "Laparoscopic appendectomy": "appendectomy",
-        "Appendectomy": "appendectomy",
-        "Open inguinal hernia repair": "hernia",
-        "Exploratory laparotomy": "bowel_resection",
-        "Small bowel resection": "bowel_resection",
-        "Bowel resection with anastomosis": "bowel_resection",
-        "Partial colectomy": "bowel_resection",
-        "Diagnostic colonoscopy": "endoscopy",
-        "Revision total knee arthroplasty": "orthopedic",
-        "Revision total hip arthroplasty": "orthopedic",
+        "AV fistula creation": ProcedureFamily.AV_FISTULA,
+        "Laparoscopic cholecystectomy": ProcedureFamily.CHOLECYSTECTOMY,
+        "Laparoscopic cholecystectomy with cholangiography": ProcedureFamily.CHOLECYSTECTOMY,
+        "Laparoscopic appendectomy": ProcedureFamily.APPENDECTOMY,
+        "Appendectomy": ProcedureFamily.APPENDECTOMY,
+        "Open inguinal hernia repair": ProcedureFamily.HERNIA_REPAIR,
+        "Exploratory laparotomy": ProcedureFamily.BOWEL_RESECTION,
+        "Small bowel resection": ProcedureFamily.BOWEL_RESECTION,
+        "Bowel resection with anastomosis": ProcedureFamily.BOWEL_RESECTION,
+        "Partial colectomy": ProcedureFamily.BOWEL_RESECTION,
     }
     MULTI_PROCEDURE_PHRASES = {
         "combined",
@@ -81,6 +94,7 @@ class ReviewEngine:
         "additional procedure",
         "performed together",
         "same operation",
+        " with ",
     }
     SECTION_CONFIDENCE = {
         "technique": 4,
@@ -96,30 +110,36 @@ class ReviewEngine:
         candidates: list[CPTCodeCandidate] | None = None,
     ) -> ReviewClassification:
         sections = structured_note.parsed_sections
-        procedure_family = cls.strongest_family(sections.get("Procedure", ""))
+        header_family = cls.normalize_procedure_family(sections.get("Procedure", ""))
+        technique_family = cls.normalize_procedure_family(sections.get("Technique", ""))
+        diagnosis_family = cls.normalize_procedure_family(sections.get("Postoperative diagnosis", ""))
+        procedure_family = header_family
         findings_family = cls.strongest_family(sections.get("Findings", ""))
-        technique_family = cls.strongest_family(sections.get("Technique", ""))
-        postop_family = cls.strongest_family(sections.get("Postoperative diagnosis", ""))
+        postop_family = diagnosis_family
         procedure_header_procedures = cls.extract_section_procedures(sections.get("Procedure", ""))
         findings_procedures = cls.extract_section_procedures(sections.get("Findings", ""))
         technique_procedures = cls.extract_section_procedures(sections.get("Technique", ""))
         diagnosis_procedures = cls.extract_section_procedures(sections.get("Postoperative diagnosis", ""))
         procedure_text = sections.get("Procedure", "") or structured_note.raw_text
         explicit_multi_procedure_intent = cls.has_explicit_multi_procedure_intent(procedure_text)
+        valid_combined_procedure = cls.is_valid_combined_procedure(procedure_header_procedures, technique_procedures, explicit_multi_procedure_intent)
 
-        procedure_conflict = False
+        header_technique_conflict = bool(header_family and technique_family and header_family != technique_family)
+        diagnosis_technique_conflict = bool(diagnosis_family and technique_family and diagnosis_family != technique_family)
+        procedure_conflict = False if valid_combined_procedure else (header_technique_conflict or diagnosis_technique_conflict)
         conflict_reason = None
-        if procedure_header_procedures and technique_procedures and procedure_header_procedures.isdisjoint(technique_procedures):
+        if procedure_conflict and header_technique_conflict:
             procedure_conflict = True
             conflict_reason = "procedure_header_technique_mismatch"
-        elif technique_procedures and diagnosis_procedures and technique_procedures.isdisjoint(diagnosis_procedures):
-            procedure_conflict = True
+        elif procedure_conflict and diagnosis_technique_conflict:
             conflict_reason = "diagnosis_technique_mismatch"
 
         classification = ReviewClassification(
+            header_family=header_family,
+            technique_family=technique_family,
+            diagnosis_family=diagnosis_family,
             procedure_family=procedure_family,
             findings_family=findings_family,
-            technique_family=technique_family,
             postop_family=postop_family,
             procedure_header_procedures=procedure_header_procedures,
             findings_procedures=findings_procedures,
@@ -127,22 +147,26 @@ class ReviewEngine:
             diagnosis_procedures=diagnosis_procedures,
             procedure_conflict=procedure_conflict,
             conflict_reason=conflict_reason,
+            valid_combined_procedure=valid_combined_procedure,
             explicit_multi_procedure_intent=explicit_multi_procedure_intent,
         )
         log_event(
             logger,
             logging.INFO,
             "review.classification",
+            header_family=classification.header_family,
             procedure_family=classification.procedure_family,
             findings_family=classification.findings_family,
             technique_family=classification.technique_family,
+            diagnosis_family=classification.diagnosis_family,
             postop_family=classification.postop_family,
-            procedure_header_procedures=sorted(classification.procedure_header_procedures),
-            findings_procedures=sorted(classification.findings_procedures),
-            technique_procedures=sorted(classification.technique_procedures),
-            diagnosis_procedures=sorted(classification.diagnosis_procedures),
+            procedure_header_procedures=cls._sorted_family_values(classification.procedure_header_procedures),
+            findings_procedures=cls._sorted_family_values(classification.findings_procedures),
+            technique_procedures=cls._sorted_family_values(classification.technique_procedures),
+            diagnosis_procedures=cls._sorted_family_values(classification.diagnosis_procedures),
             procedure_conflict=classification.procedure_conflict,
             conflict_reason=classification.conflict_reason,
+            valid_combined_procedure=classification.valid_combined_procedure,
         )
         return classification
 
@@ -158,14 +182,14 @@ class ReviewEngine:
         return cls.conflict_finding("Confirm final operative procedure before coding")
 
     @classmethod
-    def strongest_family(cls, text: str) -> str | None:
+    def strongest_family(cls, text: str) -> ProcedureFamily | None:
         scores = cls.family_scores(text)
         if not scores:
             return None
         return max(scores.items(), key=lambda item: item[1])[0]
 
     @classmethod
-    def family_scores(cls, text: str) -> dict[str, int]:
+    def family_scores(cls, text: str) -> dict[ProcedureFamily, int]:
         lowered = text.lower()
         return {
             family: sum(1 for keyword in keywords if keyword in lowered)
@@ -174,7 +198,7 @@ class ReviewEngine:
         }
 
     @classmethod
-    def detected_candidate_families(cls, candidates: list[CPTCodeCandidate]) -> set[str]:
+    def detected_candidate_families(cls, candidates: list[CPTCodeCandidate]) -> set[ProcedureFamily]:
         return {
             family
             for candidate in candidates
@@ -182,17 +206,33 @@ class ReviewEngine:
         }
 
     @classmethod
-    def classify_section_family(cls, section_text: str) -> str | None:
+    def classify_section_family(cls, section_text: str) -> ProcedureFamily | None:
         return cls.strongest_family(section_text)
 
     @classmethod
-    def extract_section_procedures(cls, section_text: str) -> set[str]:
+    def normalize_procedure_family(cls, text: str) -> ProcedureFamily | None:
+        return cls.strongest_family(text)
+
+    @classmethod
+    def extract_section_procedures(cls, section_text: str) -> set[ProcedureFamily]:
         lowered = section_text.lower()
         return {
             family
             for family, keywords in cls.FAMILY_KEYWORDS.items()
             if any(keyword in lowered for keyword in keywords)
         }
+
+    @staticmethod
+    def is_valid_combined_procedure(
+        procedure_header_procedures: set[ProcedureFamily],
+        technique_procedures: set[ProcedureFamily],
+        explicit_multi_procedure_intent: bool,
+    ) -> bool:
+        return (
+            explicit_multi_procedure_intent
+            and len(procedure_header_procedures) > 1
+            and procedure_header_procedures.issubset(technique_procedures)
+        )
 
     @classmethod
     def has_explicit_multi_procedure_intent(cls, procedure_text: str) -> bool:
@@ -213,13 +253,17 @@ class ReviewEngine:
         )
 
     @classmethod
-    def _families_linked(cls, text: str, left_family: str, right_family: str) -> bool:
+    def _families_linked(cls, text: str, left_family: ProcedureFamily, right_family: ProcedureFamily) -> bool:
         return any(
             cls._terms_linked(text, left_term, right_term)
             or cls._terms_linked(text, right_term, left_term)
             for left_term in cls.FAMILY_KEYWORDS[left_family]
             for right_term in cls.FAMILY_KEYWORDS[right_family]
         )
+
+    @staticmethod
+    def _sorted_family_values(families: set[ProcedureFamily]) -> list[str]:
+        return sorted(family.value for family in families)
 
     @staticmethod
     def _terms_linked(text: str, left_term: str, right_term: str) -> bool:
@@ -230,7 +274,7 @@ class ReviewEngine:
         if right_position == -1:
             return False
         between = text[left_position + len(left_term) : right_position]
-        return len(between) <= 120 and any(term in between for term in [" and ", " then ", " also ", " followed by "])
+        return len(between) <= 120 and any(term in between for term in [" and ", " with ", " then ", " also ", " followed by "])
 
     @staticmethod
     def conflict_finding(recommendation: str = "Confirm final operative procedure before coding") -> AuditFinding:
