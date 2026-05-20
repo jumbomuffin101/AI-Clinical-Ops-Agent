@@ -79,6 +79,7 @@ type AnalysisReport = {
     claim_readiness_reasons?: string[];
     recommended_action?: string;
     main_issue?: string;
+    detected_procedure?: string;
     analysis_mode?: string;
     ai_assist_status?: string;
     ai_provider?: string | null;
@@ -1397,6 +1398,7 @@ function reviewMetadata(report: AnalysisReport) {
 }
 
 function detectedProcedureLabel(report: AnalysisReport) {
+  if (report.report.detected_procedure) return report.report.detected_procedure;
   if (hasProcedureDocumentationConflict(report)) return "Conflicting procedure documentation";
   if (report.report.ai_procedure_summary) return cleanProcedureSummary(report.report.ai_procedure_summary);
   const names = report.extracted_procedures.map((procedure) => procedure.name).filter((name) => name !== "Unclassified operative procedure");

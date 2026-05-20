@@ -1,24 +1,10 @@
 from app.models.schemas import AuditFinding, CPTCodeCandidate, StructuredOperativeNote
 from app.rag.retriever import KeywordRetriever
+from app.services.review_engine import ReviewEngine
 
 
 class BillingAuditor:
     BUNDLED_CODES = {("47562", "47563")}
-    PROCEDURE_CONCEPT_GROUPS = {
-        "appendectomy": ["appendix", "appendectomy", "mesoappendix", "appendicitis"],
-        "cholecystectomy": [
-            "gallbladder",
-            "cholecystectomy",
-            "cystic duct",
-            "cystic artery",
-            "liver bed",
-            "gallstones",
-            "cholelithiasis",
-            "cholecystitis",
-        ],
-        "hernia": ["hernia", "mesh", "mesh repair", "inguinal ligament"],
-        "bowel_resection": ["bowel resection", "small bowel", "ileum", "anastomosis", "colectomy"],
-    }
     LATERALITY_SENSITIVE_CODES = {"36821", "35371", "35301", "49505", "75710"}
     LATERALITY_SENSITIVE_FAMILIES = {"vascular_access", "vascular_surgery", "angiography", "hernia", "orthopedics", "breast", "eye"}
     LATERALITY_SENSITIVE_TERMS = {
@@ -64,33 +50,6 @@ class BillingAuditor:
         "Open inguinal hernia repair": "hernia",
         "Diagnostic colonoscopy": "endoscopy",
         "Lower extremity angiogram": "angiography",
-    }
-    DETECTED_PROCEDURE_FAMILIES = {
-        "AV fistula creation": "vascular",
-        "Femoral endarterectomy": "vascular",
-        "Carotid endarterectomy": "vascular",
-        "Lower extremity angiogram": "vascular",
-        "Laparoscopic cholecystectomy": "gallbladder",
-        "Laparoscopic cholecystectomy with cholangiography": "gallbladder",
-        "Laparoscopic appendectomy": "appendix",
-        "Appendectomy": "appendix",
-        "Open inguinal hernia repair": "hernia",
-        "Exploratory laparotomy": "bowel",
-        "Small bowel resection": "bowel",
-        "Bowel resection with anastomosis": "bowel",
-        "Partial colectomy": "bowel",
-        "Diagnostic colonoscopy": "endoscopy",
-        "Revision total knee arthroplasty": "orthopedic",
-        "Revision total hip arthroplasty": "orthopedic",
-        "Lower extremity vascular bypass": "vascular",
-    }
-    MULTI_PROCEDURE_PHRASES = {
-        "combined procedure",
-        "performed together",
-        "same operation",
-        "concurrent procedure",
-        "additional procedure",
-        "followed by",
     }
 
     def __init__(self, retriever: KeywordRetriever):
@@ -177,13 +136,9 @@ class BillingAuditor:
                     )
                 )
 
-            conflict = self._conflicting_documentation_finding(structured_note)
+            conflict = ReviewEngine.procedure_conflict_finding(structured_note, candidates)
             if conflict:
                 findings.append(conflict)
-
-            multi_family_conflict = self._multi_family_procedure_conflict(candidates, structured_note)
-            if multi_family_conflict and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
-                findings.append(multi_family_conflict)
 
         for left, right in self.BUNDLED_CODES:
             if left in codes and right in codes:
@@ -234,154 +189,3 @@ class BillingAuditor:
             or family in cls.LATERALITY_SENSITIVE_FAMILIES
             or any(term in combined for term in cls.LATERALITY_SENSITIVE_TERMS)
         )
-
-    @classmethod
-    def _conflicting_documentation_finding(cls, structured_note: StructuredOperativeNote) -> AuditFinding | None:
-        sections = {name: text.lower() for name, text in structured_note.parsed_sections.items()}
-        if not sections:
-            return None
-
-        section_families = {
-            "procedure": cls._strongest_section_family(sections.get("Procedure", "")),
-            "findings": cls._strongest_section_family(sections.get("Findings", "")),
-            "technique": cls._strongest_section_family(sections.get("Technique", "")),
-            "postop": cls._strongest_section_family(sections.get("Postoperative diagnosis", "")),
-        }
-        present_families = {family for family in section_families.values() if family}
-        if len(present_families) < 2:
-            return None
-
-        procedure_family = section_families["procedure"]
-        narrative_families = [section_families["findings"], section_families["technique"]]
-        postop_family = section_families["postop"]
-
-        if procedure_family and any(family and family != procedure_family for family in [*narrative_families, postop_family]):
-            return cls._conflict_finding()
-        if postop_family and any(family and family != postop_family for family in narrative_families):
-            return cls._conflict_finding()
-        if len(present_families) > 1 and any(narrative_families):
-            return cls._conflict_finding()
-        return None
-
-    @classmethod
-    def _section_concepts(cls, text: str) -> set[str]:
-        lowered = text.lower()
-        return {
-            concept
-            for concept, terms in cls.PROCEDURE_CONCEPT_GROUPS.items()
-            if any(term in lowered for term in terms)
-        }
-
-    @classmethod
-    def _strongest_section_family(cls, text: str) -> str | None:
-        scores = cls._section_family_scores(text)
-        if not scores:
-            return None
-        return max(scores.items(), key=lambda item: item[1])[0]
-
-    @classmethod
-    def _section_family_scores(cls, text: str) -> dict[str, int]:
-        lowered = text.lower()
-        return {
-            concept: sum(1 for term in terms if term in lowered)
-            for concept, terms in cls.PROCEDURE_CONCEPT_GROUPS.items()
-            if any(term in lowered for term in terms)
-        }
-
-    @staticmethod
-    def _conflict_finding() -> AuditFinding:
-        return AuditFinding(
-            title="Procedure documentation conflict",
-            severity="high",
-            category="procedure_documentation_conflict",
-            related_code=None,
-            message="Procedure documentation conflict detected.",
-            explanation="The documented procedure, findings, technique, or postoperative diagnosis appear to describe different operations.",
-            recommendation="Confirm final operative procedure before coding.",
-            suggested_action="Confirm final operative procedure before coding.",
-            documentation_improvement="Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service.",
-            why_it_matters="Contradictory operative documentation can lead to incorrect coding and should be resolved before submission.",
-            evidence_used=[],
-        )
-
-    @classmethod
-    def _multi_family_procedure_conflict(
-        cls,
-        candidates: list[CPTCodeCandidate],
-        structured_note: StructuredOperativeNote,
-    ) -> AuditFinding | None:
-        families = cls._detected_candidate_families(candidates)
-        if len(families) < 2:
-            return None
-        if cls._has_explicit_multi_procedure_intent(structured_note.raw_text, families):
-            return None
-        return AuditFinding(
-            title="Procedure documentation conflict",
-            severity="high",
-            category="procedure_documentation_conflict",
-            related_code=None,
-            message="Procedure documentation conflict detected.",
-            explanation="Multiple unrelated procedure families were detected without clear documentation that separate procedures were intentionally performed together.",
-            recommendation="Clarify performed procedure(s) before billing review.",
-            suggested_action="Clarify performed procedure(s) before billing review.",
-            documentation_improvement="Review the procedure section, verify findings and operative technique consistency, and confirm the intended billable procedure.",
-            why_it_matters="Billing reviewers need clear procedure intent before selecting codes for unrelated surgical services.",
-            evidence_used=[],
-        )
-
-    @classmethod
-    def _detected_candidate_families(cls, candidates: list[CPTCodeCandidate]) -> set[str]:
-        families: set[str] = set()
-        for candidate in candidates:
-            family = cls.DETECTED_PROCEDURE_FAMILIES.get(candidate.procedure_name)
-            if family:
-                families.add(family)
-        return families
-
-    @classmethod
-    def _has_explicit_multi_procedure_intent(cls, note_text: str, families: set[str]) -> bool:
-        lowered = note_text.lower()
-        if any(phrase in lowered for phrase in cls.MULTI_PROCEDURE_PHRASES):
-            return True
-        family_list = sorted(families)
-        for index, left in enumerate(family_list):
-            for right in family_list[index + 1 :]:
-                if cls._families_linked_by_conjunction(lowered, left, right):
-                    return True
-        return False
-
-    @classmethod
-    def _families_linked_by_conjunction(cls, text: str, left_family: str, right_family: str) -> bool:
-        left_terms = cls._terms_for_detected_family(left_family)
-        right_terms = cls._terms_for_detected_family(right_family)
-        conjunctions = ["and", "then", "also", "followed by"]
-        return any(
-            cls._terms_linked(text, left_term, right_term, conjunction)
-            or cls._terms_linked(text, right_term, left_term, conjunction)
-            for left_term in left_terms
-            for right_term in right_terms
-            for conjunction in conjunctions
-        )
-
-    @classmethod
-    def _terms_for_detected_family(cls, family: str) -> list[str]:
-        if family == "appendix":
-            return cls.PROCEDURE_CONCEPT_GROUPS["appendectomy"]
-        if family == "gallbladder":
-            return cls.PROCEDURE_CONCEPT_GROUPS["cholecystectomy"]
-        if family == "hernia":
-            return cls.PROCEDURE_CONCEPT_GROUPS["hernia"]
-        if family == "bowel":
-            return cls.PROCEDURE_CONCEPT_GROUPS["bowel_resection"]
-        return [family]
-
-    @staticmethod
-    def _terms_linked(text: str, left_term: str, right_term: str, conjunction: str) -> bool:
-        left_position = text.find(left_term)
-        if left_position == -1:
-            return False
-        right_position = text.find(right_term, left_position + len(left_term))
-        if right_position == -1:
-            return False
-        between = text[left_position + len(left_term) : right_position]
-        return len(between) <= 120 and conjunction in between

@@ -32,6 +32,7 @@ from app.parsing.note_parser import OperativeNoteParser
 from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
 from app.safety.phi_detector import contains_phi_like_identifier
+from app.services.review_engine import ReviewClassification, ReviewEngine
 
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class AnalysisService:
         procedures = self.extractor.run(payload.note_text, structured_note)
         candidates = self.coder.run(procedures)
         findings = self.auditor.run(candidates, structured_note)
+        classification = self._apply_deterministic_guardrails(structured_note, candidates, findings)
         ai_analysis, ai_status = self._maybe_run_ai_analysis(payload.note_text, candidates, findings)
         if ai_analysis:
             structured_note = self._merge_structured_note(structured_note, ai_analysis)
@@ -73,12 +75,15 @@ class AnalysisService:
             procedures = self._merge_ai_procedures(procedures, ai_analysis, structured_note)
             candidates = self.coder.run(procedures)
             findings = self.auditor.run(candidates, structured_note)
+            classification = self._apply_deterministic_guardrails(structured_note, candidates, findings)
         findings.extend(self._ai_audit_findings(ai_analysis, candidates))
+        classification = self._apply_deterministic_guardrails(structured_note, candidates, findings)
         if ai_analysis and ai_analysis.unsupported_or_unclear_procedure and not any(finding.category == "unsupported_code" for finding in findings):
             findings.append(self._unsupported_ai_finding())
         estimates = self.estimator.run(candidates)
         summary, report = self.report_generator.run(procedures, candidates, findings, estimates)
         self._apply_review_priority(report, findings)
+        self._log_review_classification(classification, report)
         report["structured_note"] = structured_note.model_dump()
         report["analysis_mode"] = "Hybrid AI mode" if ai_analysis else "Rules mode"
         report["ai_assist_status"] = ai_status
@@ -119,6 +124,37 @@ class AnalysisService:
         return self.get_analysis(db, UUID(analysis.id))
 
     @staticmethod
+    def _apply_deterministic_guardrails(
+        structured_note: StructuredOperativeNote,
+        candidates: list[CPTCodeCandidate],
+        findings: list[AuditFinding],
+    ) -> ReviewClassification:
+        classification = ReviewEngine.classify(structured_note, candidates)
+        if classification.procedure_conflict and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
+            recommendation = (
+                "Clarify performed procedure(s) before billing review."
+                if classification.conflict_reason == "multi_family_without_intent"
+                else "Confirm final operative procedure before coding."
+            )
+            findings.append(ReviewEngine.conflict_finding(recommendation))
+        return classification
+
+    @staticmethod
+    def _log_review_classification(classification: ReviewClassification, report: dict) -> None:
+        log_event(
+            logger,
+            logging.INFO,
+            "review.finalized",
+            procedure_family=classification.procedure_family,
+            findings_family=classification.findings_family,
+            technique_family=classification.technique_family,
+            postop_family=classification.postop_family,
+            procedure_conflict=classification.procedure_conflict,
+            final_review_status=report.get("claim_readiness_status"),
+            final_main_issue=report.get("main_issue"),
+        )
+
+    @staticmethod
     def _apply_review_priority(report: dict, findings: list[AuditFinding]) -> None:
         categories = {finding.category for finding in findings if finding.severity != "info"}
         if {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"} & categories:
@@ -134,6 +170,7 @@ class AnalysisService:
             report["claim_readiness"] = "high_risk"
             report["main_issue"] = "Procedure documentation conflict"
             report["recommended_action"] = conflict.recommendation if conflict else "Confirm final operative procedure before coding."
+            report["detected_procedure"] = "Conflicting procedure documentation"
             return
         if "bundling_conflict" in categories:
             report["claim_readiness_status"] = "High Risk"
