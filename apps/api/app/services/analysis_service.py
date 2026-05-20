@@ -99,6 +99,8 @@ class AnalysisService:
         report["ai_probable_operative_intent"] = ai_analysis.probable_operative_intent if ai_analysis else None
         report["ai_supporting_texts"] = self._ai_supporting_texts(ai_analysis)
         report["ai_cpt_rationales"] = self._ai_cpt_rationales(ai_analysis) or self._validated_cpt_rationales(ai_analysis, candidates)
+        self._force_raw_section_procedure_conflict(structured_note, findings, report)
+        self._log_raw_section_review(structured_note, report)
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -186,6 +188,91 @@ class AnalysisService:
             report["claim_readiness"] = "needs_review"
             report["main_issue"] = "Missing laterality"
             report["recommended_action"] = "Clarify left or right side before review."
+
+    @classmethod
+    def _force_raw_section_procedure_conflict(
+        cls,
+        structured_note: StructuredOperativeNote,
+        findings: list[AuditFinding],
+        report: dict,
+    ) -> None:
+        procedure_family = cls.classify_section_family(structured_note.parsed_sections.get("Procedure", ""))
+        findings_family = cls.classify_section_family(structured_note.parsed_sections.get("Findings", ""))
+        technique_family = cls.classify_section_family(structured_note.parsed_sections.get("Technique", ""))
+        procedure_conflict = bool(
+            procedure_family
+            and (
+                (findings_family and findings_family != procedure_family)
+                or (technique_family and technique_family != procedure_family)
+            )
+        )
+        if not procedure_conflict:
+            return
+
+        if not any(finding.category == "procedure_documentation_conflict" for finding in findings):
+            findings.append(ReviewEngine.conflict_finding("Confirm final operative procedure before coding."))
+        report["claim_readiness_status"] = "High Risk"
+        report["claim_readiness"] = "high_risk"
+        report["main_issue"] = "Procedure documentation conflict"
+        report["detected_procedure"] = "Conflicting procedure documentation"
+        report["recommended_action"] = "Confirm final operative procedure before coding."
+        report["coding_recommendation"] = "Coder review needed"
+        report["plain_english_review"] = (
+            "The procedure label and operative details describe different services. "
+            "Coding should not proceed until the documentation is reconciled."
+        )
+
+    @staticmethod
+    def classify_section_family(section_text: str) -> str | None:
+        lowered = section_text.lower()
+        family_keywords = {
+            "appendectomy": ["appendectomy", "appendix", "mesoappendix", "right lower quadrant"],
+            "cholecystectomy": [
+                "cholecystectomy",
+                "gallbladder",
+                "gallstones",
+                "cholelithiasis",
+                "cystic duct",
+                "cystic artery",
+                "liver bed",
+            ],
+            "hernia": ["hernia", "inguinal", "mesh", "inguinal ligament", "conjoint tendon"],
+            "bowel_resection": ["bowel resection", "small bowel", "ileum", "distal ileum", "anastomosis", "colectomy"],
+        }
+        scores = {
+            family: sum(1 for keyword in keywords if keyword in lowered)
+            for family, keywords in family_keywords.items()
+            if any(keyword in lowered for keyword in keywords)
+        }
+        if not scores:
+            return None
+        return max(scores.items(), key=lambda item: item[1])[0]
+
+    @classmethod
+    def _log_raw_section_review(cls, structured_note: StructuredOperativeNote, report: dict) -> None:
+        procedure_family = cls.classify_section_family(structured_note.parsed_sections.get("Procedure", ""))
+        findings_family = cls.classify_section_family(structured_note.parsed_sections.get("Findings", ""))
+        technique_family = cls.classify_section_family(structured_note.parsed_sections.get("Technique", ""))
+        postop_family = cls.classify_section_family(structured_note.parsed_sections.get("Postoperative diagnosis", ""))
+        procedure_conflict = bool(
+            procedure_family
+            and (
+                (findings_family and findings_family != procedure_family)
+                or (technique_family and technique_family != procedure_family)
+            )
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "review.raw_section_finalized",
+            procedure_family=procedure_family,
+            findings_family=findings_family,
+            technique_family=technique_family,
+            postop_family=postop_family,
+            procedure_conflict=procedure_conflict,
+            final_review_status=report.get("claim_readiness_status"),
+            final_main_issue=report.get("main_issue"),
+        )
 
     def get_analysis(self, db: Session, analysis_id: UUID) -> AnalysisReport:
         analysis = db.get(models.Analysis, str(analysis_id))

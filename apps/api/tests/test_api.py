@@ -290,6 +290,20 @@ Postoperative diagnosis: Acute appendicitis."""
     assert conflict["documentation_improvement"] == "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service."
 
 
+def test_exact_appendectomy_gallbladder_contradiction_forces_high_risk(client):
+    note = """Procedure: Laparoscopic appendectomy.
+Findings: Gallstones with inflamed gallbladder.
+Technique: Gallbladder was dissected from the liver bed and removed.
+Postoperative diagnosis: Acute appendicitis."""
+    response = client.post("/api/notes", json={"title": "Exact appendectomy contradiction", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "High Risk"
+    assert body["report"]["main_issue"] == "Procedure documentation conflict"
+    assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
+
+
 def test_appendectomy_procedure_with_gallbladder_technique_is_high_risk(client):
     note = """Procedure: Laparoscopic appendectomy.
 Technique: Gallbladder was dissected from the liver bed and removed.
@@ -343,6 +357,20 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
     assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+
+
+def test_exact_cholecystectomy_appendix_contradiction_forces_high_risk(client):
+    note = """Procedure: Laparoscopic cholecystectomy.
+Findings: Inflamed appendix in the right lower quadrant.
+Technique: The appendix was divided at the base with a stapler and removed in a retrieval bag.
+Postoperative diagnosis: Cholelithiasis."""
+    response = client.post("/api/notes", json={"title": "Exact cholecystectomy contradiction", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "High Risk"
+    assert body["report"]["main_issue"] == "Procedure documentation conflict"
+    assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
 
 
 def test_cholecystectomy_possible_cholangiogram_remains_high_risk(client):
