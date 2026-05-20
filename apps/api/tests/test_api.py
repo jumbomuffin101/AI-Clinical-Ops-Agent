@@ -271,12 +271,38 @@ Postoperative diagnosis: Acute appendicitis."""
     assert conflict["documentation_improvement"] == "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service."
 
 
+def test_appendectomy_procedure_with_gallbladder_technique_is_high_risk(client):
+    note = """Procedure: Laparoscopic appendectomy.
+Technique: Gallbladder was dissected from the liver bed and removed.
+Postoperative diagnosis: Acute appendicitis."""
+    response = client.post("/api/notes", json={"title": "Appendectomy gallbladder conflict", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "High Risk"
+    assert body["report"]["main_issue"] == "Procedure documentation conflict"
+    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+
+
 def test_conflicting_cholecystectomy_appendix_documentation_is_high_risk(client):
     note = """Procedure: Laparoscopic cholecystectomy.
 Findings: Inflamed appendix in right lower quadrant.
 Technique: Appendix divided at base and removed.
 Postoperative diagnosis: Cholelithiasis."""
     response = client.post("/api/notes", json={"title": "Reverse conflicting documentation", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "High Risk"
+    assert body["report"]["main_issue"] == "Procedure documentation conflict"
+    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+
+
+def test_cholecystectomy_procedure_with_appendix_technique_is_high_risk(client):
+    note = """Procedure: Laparoscopic cholecystectomy.
+Technique: Appendix divided at base and removed.
+Postoperative diagnosis: Cholelithiasis."""
+    response = client.post("/api/notes", json={"title": "Cholecystectomy appendix conflict", "note_text": note})
 
     assert response.status_code == 201
     body = response.json()

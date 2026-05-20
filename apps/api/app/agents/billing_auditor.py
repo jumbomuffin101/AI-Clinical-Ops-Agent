@@ -6,9 +6,18 @@ class BillingAuditor:
     BUNDLED_CODES = {("47562", "47563")}
     PROCEDURE_CONCEPT_GROUPS = {
         "appendectomy": ["appendix", "appendectomy", "mesoappendix", "appendicitis"],
-        "cholecystectomy": ["gallbladder", "cholecystectomy", "cystic duct", "cystic artery", "gallstones"],
-        "hernia": ["hernia", "mesh repair", "inguinal ligament"],
-        "bowel_resection": ["bowel resection", "anastomosis", "ileum", "colectomy", "small bowel"],
+        "cholecystectomy": [
+            "gallbladder",
+            "cholecystectomy",
+            "cystic duct",
+            "cystic artery",
+            "liver bed",
+            "gallstones",
+            "cholelithiasis",
+            "cholecystitis",
+        ],
+        "hernia": ["hernia", "mesh", "mesh repair", "inguinal ligament"],
+        "bowel_resection": ["bowel resection", "small bowel", "ileum", "anastomosis", "colectomy"],
     }
     LATERALITY_SENSITIVE_CODES = {"36821", "35371", "35301", "49505", "75710"}
     LATERALITY_SENSITIVE_FAMILIES = {"vascular_access", "vascular_surgery", "angiography", "hernia", "orthopedics", "breast", "eye"}
@@ -195,29 +204,57 @@ class BillingAuditor:
             or any(term in combined for term in cls.LATERALITY_SENSITIVE_TERMS)
         )
 
-    @staticmethod
-    def _conflicting_documentation_finding(structured_note: StructuredOperativeNote) -> AuditFinding | None:
+    @classmethod
+    def _conflicting_documentation_finding(cls, structured_note: StructuredOperativeNote) -> AuditFinding | None:
         sections = {name: text.lower() for name, text in structured_note.parsed_sections.items()}
         if not sections:
             return None
 
-        procedure_concepts = BillingAuditor._section_concepts(sections.get("Procedure", ""))
-        diagnosis_concepts = BillingAuditor._section_concepts(sections.get("Postoperative diagnosis", ""))
-        narrative_concepts = BillingAuditor._section_concepts(" ".join([sections.get("Findings", ""), sections.get("Technique", "")]))
-        declared_concepts = procedure_concepts or diagnosis_concepts
+        section_families = {
+            "procedure": cls._strongest_section_family(sections.get("Procedure", "")),
+            "findings": cls._strongest_section_family(sections.get("Findings", "")),
+            "technique": cls._strongest_section_family(sections.get("Technique", "")),
+            "postop": cls._strongest_section_family(sections.get("Postoperative diagnosis", "")),
+        }
+        present_families = {family for family in section_families.values() if family}
+        if len(present_families) < 2:
+            return None
 
-        if declared_concepts and narrative_concepts and declared_concepts.isdisjoint(narrative_concepts):
-            return BillingAuditor._conflict_finding()
-        if procedure_concepts and diagnosis_concepts and procedure_concepts.isdisjoint(diagnosis_concepts):
-            return BillingAuditor._conflict_finding()
+        procedure_family = section_families["procedure"]
+        narrative_families = [section_families["findings"], section_families["technique"]]
+        postop_family = section_families["postop"]
+
+        if procedure_family and any(family and family != procedure_family for family in [*narrative_families, postop_family]):
+            return cls._conflict_finding()
+        if postop_family and any(family and family != postop_family for family in narrative_families):
+            return cls._conflict_finding()
+        if len(present_families) > 1 and any(narrative_families):
+            return cls._conflict_finding()
         return None
 
     @classmethod
     def _section_concepts(cls, text: str) -> set[str]:
+        lowered = text.lower()
         return {
             concept
             for concept, terms in cls.PROCEDURE_CONCEPT_GROUPS.items()
-            if any(term in text for term in terms)
+            if any(term in lowered for term in terms)
+        }
+
+    @classmethod
+    def _strongest_section_family(cls, text: str) -> str | None:
+        scores = cls._section_family_scores(text)
+        if not scores:
+            return None
+        return max(scores.items(), key=lambda item: item[1])[0]
+
+    @classmethod
+    def _section_family_scores(cls, text: str) -> dict[str, int]:
+        lowered = text.lower()
+        return {
+            concept: sum(1 for term in terms if term in lowered)
+            for concept, terms in cls.PROCEDURE_CONCEPT_GROUPS.items()
+            if any(term in lowered for term in terms)
         }
 
     @staticmethod

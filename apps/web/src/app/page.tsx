@@ -1390,6 +1390,7 @@ function reviewMetadata(report: AnalysisReport) {
 }
 
 function detectedProcedureLabel(report: AnalysisReport) {
+  if (hasProcedureDocumentationConflict(report)) return "Conflicting procedure documentation";
   if (report.report.ai_procedure_summary) return cleanProcedureSummary(report.report.ai_procedure_summary);
   const names = report.extracted_procedures.map((procedure) => procedure.name).filter((name) => name !== "Unclassified operative procedure");
   return names.length ? names.join(", ") : "Procedure identified, coder confirmation recommended";
@@ -1459,13 +1460,13 @@ function keyOperativeDetails(report: AnalysisReport) {
 
 function nextStepLabel(report: AnalysisReport) {
   const issue = reviewMainIssue(report);
+  if (issue === "Procedure documentation conflict") return "Confirm final operative procedure before coding.";
   if (!meaningfulCptCandidate(report)) {
     if (isGiSurgeryReview(report)) {
       return "Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection required.";
     }
     return "Confirm operative details and final CPT selection with a human coder.";
   }
-  if (issue === "Procedure documentation conflict") return "Confirm final operative procedure before coding.";
   if (issue === "Missing laterality") return "Clarify left or right side before review.";
   if (issue === "Bundling conflict") return "Confirm which service should be billed before submission.";
   if (issue === "Ambiguous documentation") return "Clarify the procedure intent and operative extent.";
@@ -1497,8 +1498,8 @@ function hasSevereBillingRisk(report: AnalysisReport) {
 
 function mainIssue(findings: AuditFinding[]) {
   const categories = findings.map((finding) => finding.category);
-  if (categories.includes("bundling_conflict")) return "Bundling conflict";
   if (categories.includes("procedure_documentation_conflict") || categories.includes("conflicting_documentation") || categories.includes("conflicting_procedures")) return "Procedure documentation conflict";
+  if (categories.includes("bundling_conflict")) return "Bundling conflict";
   if (categories.includes("missing_laterality")) return "Missing laterality";
   if (categories.includes("low_confidence")) return "Ambiguous documentation";
   if (categories.includes("unsupported_code")) return "Coder review needed";
@@ -1527,6 +1528,9 @@ function reportNarrative(report: AnalysisReport) {
   const action = nextStepLabel(report);
   const procedure = detectedProcedureLabel(report).toLowerCase();
   const family = report.report.ai_likely_procedure_family;
+  if (issue === "Procedure documentation conflict") {
+    return "The documented procedure and operative details describe different surgeries. Coding should not proceed until documentation is reconciled.";
+  }
   if (!meaningfulCptCandidate(report)) {
     if (isGiSurgeryReview(report)) {
       const anatomy = keyAnatomyLabel(report);
@@ -1545,10 +1549,16 @@ function reportNarrative(report: AnalysisReport) {
   if (issue === "Bundling conflict") {
     return `The note is high risk because the documentation produced a possible bundled-code conflict. A human reviewer should decide which service should be billed.`;
   }
-  if (issue === "Procedure documentation conflict") {
-    return `The note is high risk because the documented procedure and operative details describe different surgeries. Coding should not proceed until the documentation is reconciled.`;
-  }
   return `The note is marked ${displayReviewStatus(report)} because the review found ${issue.toLowerCase()}. Recommended next step: ${action}`;
+}
+
+function hasProcedureDocumentationConflict(report: AnalysisReport) {
+  return (
+    reviewIssueLabel(report.report.main_issue ?? "") === "Procedure documentation conflict" ||
+    report.audit_findings.some((finding) =>
+      ["procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"].includes(finding.category)
+    )
+  );
 }
 
 function findingTitle(category: string) {

@@ -123,10 +123,10 @@ class ReportGenerator:
             status = "Ready"
             status_key = "ready"
 
-        if "bundling_conflict" in categories:
-            main_issue = "Bundling conflict"
-        elif {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"} & categories:
+        if {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"} & categories:
             main_issue = "Procedure documentation conflict"
+        elif "bundling_conflict" in categories:
+            main_issue = "Bundling conflict"
         elif "missing_laterality" in categories:
             main_issue = "Missing laterality"
         elif "unsupported_code" in categories:
