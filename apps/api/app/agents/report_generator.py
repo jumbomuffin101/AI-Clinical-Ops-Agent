@@ -137,7 +137,11 @@ class ReportGenerator:
             main_issue = "No major issues"
 
         if main_issue == "Procedure documentation conflict":
-            recommended_action = "Confirm final operative procedure before coding."
+            recommended_action = ReportGenerator._finding_recommendation(
+                findings,
+                {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"},
+                "Confirm final operative procedure before coding.",
+            )
         elif main_issue == "Missing laterality":
             recommended_action = "Clarify left or right side before review."
         elif status == "Ready":
@@ -186,3 +190,8 @@ class ReportGenerator:
         if "unclassified operative procedure" in procedure_text:
             return "Insufficient procedure detail"
         return "Coder confirmation needed"
+
+    @staticmethod
+    def _finding_recommendation(findings: list[AuditFinding], categories: set[str], fallback: str) -> str:
+        finding = next((item for item in findings if item.category in categories and item.recommendation), None)
+        return finding.recommendation if finding else fallback

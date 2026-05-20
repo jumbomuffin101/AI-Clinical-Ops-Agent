@@ -122,10 +122,18 @@ class AnalysisService:
     def _apply_review_priority(report: dict, findings: list[AuditFinding]) -> None:
         categories = {finding.category for finding in findings if finding.severity != "info"}
         if {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"} & categories:
+            conflict = next(
+                (
+                    finding
+                    for finding in findings
+                    if finding.category in {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"}
+                ),
+                None,
+            )
             report["claim_readiness_status"] = "High Risk"
             report["claim_readiness"] = "high_risk"
             report["main_issue"] = "Procedure documentation conflict"
-            report["recommended_action"] = "Confirm final operative procedure before coding."
+            report["recommended_action"] = conflict.recommendation if conflict else "Confirm final operative procedure before coding."
             return
         if "bundling_conflict" in categories:
             report["claim_readiness_status"] = "High Risk"

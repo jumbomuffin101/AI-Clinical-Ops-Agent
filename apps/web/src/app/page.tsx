@@ -753,9 +753,11 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
           <div className="mt-5 rounded-xl border border-[#dce9e7] bg-[#f4fbf9] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#2d7772]">Coding Recommendation</p>
             <p className="mt-2 text-base font-semibold text-[#17343c]">{billingCodeLabel(report)}</p>
-            {!meaningfulCptCandidate(report) ? (
+            {needsCoderReviewBeforeCodeSelection(report) ? (
               <p className="mt-2 text-sm leading-6 text-[#586b69]">
-                The system identified the procedure, but coder confirmation is needed before selecting a CPT.
+                {hasProcedureDocumentationConflict(report)
+                  ? "Procedure documentation should be clarified before selecting a CPT."
+                  : "The system identified the procedure, but coder confirmation is needed before selecting a CPT."}
               </p>
             ) : null}
           </div>
@@ -1366,9 +1368,14 @@ function meaningfulCptCandidate(report: AnalysisReport) {
 }
 
 function billingCodeLabel(report: AnalysisReport) {
+  if (hasProcedureDocumentationConflict(report)) return "Coder review needed";
   const candidate = meaningfulCptCandidate(report);
   if (!candidate) return "Coder review needed";
   return `Suggested code: ${candidate.code}`;
+}
+
+function needsCoderReviewBeforeCodeSelection(report: AnalysisReport) {
+  return hasProcedureDocumentationConflict(report) || !meaningfulCptCandidate(report);
 }
 
 function historyCodeLabel(code?: string | null) {
@@ -1460,7 +1467,7 @@ function keyOperativeDetails(report: AnalysisReport) {
 
 function nextStepLabel(report: AnalysisReport) {
   const issue = reviewMainIssue(report);
-  if (issue === "Procedure documentation conflict") return "Confirm final operative procedure before coding.";
+  if (issue === "Procedure documentation conflict") return report.report.recommended_action ?? "Confirm final operative procedure before coding.";
   if (!meaningfulCptCandidate(report)) {
     if (isGiSurgeryReview(report)) {
       return "Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection required.";
