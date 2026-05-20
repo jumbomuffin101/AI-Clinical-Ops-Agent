@@ -14,6 +14,10 @@ class ReviewClassification:
     findings_family: str | None
     technique_family: str | None
     postop_family: str | None
+    procedure_header_procedures: set[str]
+    findings_procedures: set[str]
+    technique_procedures: set[str]
+    diagnosis_procedures: set[str]
     procedure_conflict: bool
     conflict_reason: str | None
     explicit_multi_procedure_intent: bool
@@ -78,6 +82,12 @@ class ReviewEngine:
         "performed together",
         "same operation",
     }
+    SECTION_CONFIDENCE = {
+        "technique": 4,
+        "procedure_header": 3,
+        "postop_diagnosis": 2,
+        "findings": 1,
+    }
 
     @classmethod
     def classify(
@@ -90,25 +100,31 @@ class ReviewEngine:
         findings_family = cls.strongest_family(sections.get("Findings", ""))
         technique_family = cls.strongest_family(sections.get("Technique", ""))
         postop_family = cls.strongest_family(sections.get("Postoperative diagnosis", ""))
+        procedure_header_procedures = cls.extract_section_procedures(sections.get("Procedure", ""))
+        findings_procedures = cls.extract_section_procedures(sections.get("Findings", ""))
+        technique_procedures = cls.extract_section_procedures(sections.get("Technique", ""))
+        diagnosis_procedures = cls.extract_section_procedures(sections.get("Postoperative diagnosis", ""))
         procedure_text = sections.get("Procedure", "") or structured_note.raw_text
         explicit_multi_procedure_intent = cls.has_explicit_multi_procedure_intent(procedure_text)
 
         procedure_conflict = False
         conflict_reason = None
-        narrative_families = [findings_family, technique_family, postop_family]
-        if procedure_family and not explicit_multi_procedure_intent:
-            procedure_conflict = any(family and family != procedure_family for family in narrative_families)
-            conflict_reason = "section_contradiction" if procedure_conflict else None
-        if not procedure_conflict and candidates:
-            candidate_families = cls.detected_candidate_families(candidates)
-            procedure_conflict = len(candidate_families) > 1 and not explicit_multi_procedure_intent
-            conflict_reason = "multi_family_without_intent" if procedure_conflict else None
+        if procedure_header_procedures and technique_procedures and procedure_header_procedures.isdisjoint(technique_procedures):
+            procedure_conflict = True
+            conflict_reason = "procedure_header_technique_mismatch"
+        elif technique_procedures and diagnosis_procedures and technique_procedures.isdisjoint(diagnosis_procedures):
+            procedure_conflict = True
+            conflict_reason = "diagnosis_technique_mismatch"
 
         classification = ReviewClassification(
             procedure_family=procedure_family,
             findings_family=findings_family,
             technique_family=technique_family,
             postop_family=postop_family,
+            procedure_header_procedures=procedure_header_procedures,
+            findings_procedures=findings_procedures,
+            technique_procedures=technique_procedures,
+            diagnosis_procedures=diagnosis_procedures,
             procedure_conflict=procedure_conflict,
             conflict_reason=conflict_reason,
             explicit_multi_procedure_intent=explicit_multi_procedure_intent,
@@ -121,6 +137,10 @@ class ReviewEngine:
             findings_family=classification.findings_family,
             technique_family=classification.technique_family,
             postop_family=classification.postop_family,
+            procedure_header_procedures=sorted(classification.procedure_header_procedures),
+            findings_procedures=sorted(classification.findings_procedures),
+            technique_procedures=sorted(classification.technique_procedures),
+            diagnosis_procedures=sorted(classification.diagnosis_procedures),
             procedure_conflict=classification.procedure_conflict,
             conflict_reason=classification.conflict_reason,
         )
@@ -135,12 +155,7 @@ class ReviewEngine:
         classification = cls.classify(structured_note, candidates)
         if not classification.procedure_conflict:
             return None
-        recommendation = (
-            "Clarify performed procedure(s) before billing review."
-            if classification.conflict_reason == "multi_family_without_intent"
-            else "Confirm final operative procedure before coding."
-        )
-        return cls.conflict_finding(recommendation)
+        return cls.conflict_finding("Confirm final operative procedure before coding")
 
     @classmethod
     def strongest_family(cls, text: str) -> str | None:
@@ -164,6 +179,19 @@ class ReviewEngine:
             family
             for candidate in candidates
             if (family := cls.PROCEDURE_NAME_FAMILIES.get(candidate.procedure_name))
+        }
+
+    @classmethod
+    def classify_section_family(cls, section_text: str) -> str | None:
+        return cls.strongest_family(section_text)
+
+    @classmethod
+    def extract_section_procedures(cls, section_text: str) -> set[str]:
+        lowered = section_text.lower()
+        return {
+            family
+            for family, keywords in cls.FAMILY_KEYWORDS.items()
+            if any(keyword in lowered for keyword in keywords)
         }
 
     @classmethod
@@ -205,7 +233,7 @@ class ReviewEngine:
         return len(between) <= 120 and any(term in between for term in [" and ", " then ", " also ", " followed by "])
 
     @staticmethod
-    def conflict_finding(recommendation: str) -> AuditFinding:
+    def conflict_finding(recommendation: str = "Confirm final operative procedure before coding") -> AuditFinding:
         return AuditFinding(
             title="Procedure documentation conflict",
             severity="high",

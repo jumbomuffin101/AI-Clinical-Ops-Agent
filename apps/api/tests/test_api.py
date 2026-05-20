@@ -285,7 +285,7 @@ Postoperative diagnosis: Acute appendicitis."""
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
-    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding"
     conflict = next(finding for finding in body["audit_findings"] if finding["category"] == "procedure_documentation_conflict")
     assert conflict["documentation_improvement"] == "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service."
 
@@ -314,10 +314,10 @@ Postoperative diagnosis: Acute appendicitis."""
     body = response.json()
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
-    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding"
 
 
-def test_unrelated_procedure_families_without_intent_is_high_risk(client):
+def test_unrelated_procedure_families_without_section_conflict_is_not_auto_high_risk(client):
     note = (
         "Laparoscopic cholecystectomy was documented in the note. "
         "Laparoscopic appendectomy was listed elsewhere without explanation."
@@ -326,21 +326,20 @@ def test_unrelated_procedure_families_without_intent_is_high_risk(client):
 
     assert response.status_code == 201
     body = response.json()
-    assert body["report"]["claim_readiness_status"] == "High Risk"
-    assert body["report"]["main_issue"] == "Procedure documentation conflict"
-    assert body["report"]["recommended_action"] == "Clarify performed procedure(s) before billing review."
-    assert any(finding["category"] == "procedure_documentation_conflict" for finding in body["audit_findings"])
+    assert not any(finding["category"] == "procedure_documentation_conflict" for finding in body["audit_findings"])
 
 
 def test_unrelated_procedure_families_with_combined_intent_is_allowed(client):
-    note = (
-        "Laparoscopic appendectomy and cholecystectomy were performed during the same operation. "
-        "The appendix was removed and the gallbladder was dissected from the liver bed."
-    )
+    note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
+Findings: Inflamed appendix and gallstones.
+Technique: The appendix was removed and the gallbladder was dissected from the liver bed and removed.
+Postoperative diagnosis: Acute appendicitis and cholelithiasis."""
     response = client.post("/api/notes", json={"title": "Combined appendectomy cholecystectomy", "note_text": note})
 
     assert response.status_code == 201
     body = response.json()
+    assert body["report"]["claim_readiness_status"] == "Ready"
+    assert body["report"]["main_issue"] == "No major issues"
     assert not any(finding["category"] == "procedure_documentation_conflict" for finding in body["audit_findings"])
 
 
@@ -356,7 +355,7 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
-    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding"
 
 
 def test_exact_cholecystectomy_appendix_contradiction_forces_high_risk(client):
@@ -388,6 +387,23 @@ Postoperative diagnosis: Cholelithiasis."""
     assert any(finding["category"] == "bundling_conflict" for finding in body["audit_findings"])
 
 
+def test_normal_cholecystectomy_is_ready(client):
+    note = """Procedure: Laparoscopic cholecystectomy.
+Indication: Synthetic patient with symptomatic cholelithiasis.
+Findings: Inflamed gallbladder with gallstones.
+Technique: Four ports were placed. The cystic duct and cystic artery were clipped and divided. The gallbladder was dissected from the liver bed and removed.
+Complications: None.
+Postoperative diagnosis: Cholelithiasis."""
+    response = client.post("/api/notes", json={"title": "Normal cholecystectomy", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "Ready"
+    assert body["report"]["main_issue"] == "No major issues"
+    assert body["cpt_candidates"][0]["code"] == "47562"
+    assert not any(finding["category"] == "procedure_documentation_conflict" for finding in body["audit_findings"])
+
+
 def test_cholecystectomy_procedure_with_appendix_technique_is_high_risk(client):
     note = """Procedure: Laparoscopic cholecystectomy.
 Technique: Appendix divided at base and removed.
@@ -398,7 +414,7 @@ Postoperative diagnosis: Cholelithiasis."""
     body = response.json()
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
-    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
+    assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding"
 
 
 def test_revised_note_workflow_improves_readiness(client):
