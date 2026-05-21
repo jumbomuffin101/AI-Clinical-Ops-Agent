@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db.session import Base, get_db
 from app.main import app
+from app.services.analysis_service import AnalysisService
 
 
 SAMPLE_NOTE = (
@@ -347,6 +348,77 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["suggested_code"] is None
     assert body["extracted_procedures"] == []
     assert body["cpt_candidates"] == []
+
+
+def test_final_guardrails_override_ready_appendectomy_gallbladder_report():
+    report = {
+        "claim_readiness_status": "Ready",
+        "review_status": "Ready",
+        "main_issue": "No major issues",
+        "detected_procedure": "Laparoscopic appendectomy, possible cholecystectomy",
+        "coding_recommendation": "Suggested code 44970",
+        "suggested_code": "44970",
+    }
+    findings = []
+    note = """Procedure: Laparoscopic appendectomy.
+Technique: Gallbladder was dissected from the liver bed and removed.
+Postoperative diagnosis: Acute appendicitis."""
+
+    applied = AnalysisService.apply_final_guardrails(note, report, findings)
+
+    assert applied is True
+    assert report["claim_readiness_status"] == "High Risk"
+    assert report["main_issue"] == "Procedure documentation conflict"
+    assert report["detected_procedure"] == "Conflicting procedure documentation"
+    assert report["recommended_next_step"] == "Confirm final operative procedure before coding."
+    assert report["coding_recommendation"] == "Coder review needed"
+    assert report["suggested_code"] is None
+    assert report["plain_english_review"] == (
+        "The procedure label and operative details describe different services. "
+        "Coding should not proceed until the documentation is reconciled."
+    )
+    assert any(finding.category == "procedure_documentation_conflict" for finding in findings)
+
+
+def test_final_guardrails_override_ready_cholecystectomy_appendix_report():
+    report = {
+        "claim_readiness_status": "Ready",
+        "review_status": "Ready",
+        "main_issue": "No major issues",
+        "detected_procedure": "Laparoscopic cholecystectomy, laparoscopic appendectomy",
+        "coding_recommendation": "Suggested code 47562",
+        "suggested_code": "47562",
+    }
+    note = """Procedure: Laparoscopic cholecystectomy.
+Technique: The appendix was divided at the base with a stapler and removed in a retrieval bag.
+Postoperative diagnosis: Cholelithiasis."""
+
+    applied = AnalysisService.apply_final_guardrails(note, report, [])
+
+    assert applied is True
+    assert report["claim_readiness_status"] == "High Risk"
+    assert report["main_issue"] == "Procedure documentation conflict"
+    assert report["detected_procedure"] == "Conflicting procedure documentation"
+
+
+def test_final_guardrails_allow_explicit_combined_procedure():
+    report = {
+        "claim_readiness_status": "Ready",
+        "review_status": "Ready",
+        "main_issue": "No major issues",
+        "detected_procedure": "Laparoscopic appendectomy and laparoscopic cholecystectomy",
+        "coding_recommendation": "Coder review completed",
+        "suggested_code": "44970",
+    }
+    note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
+Technique: The appendix was divided at the base with a stapler and removed. The cystic duct and cystic artery were clipped and divided, and the gallbladder was removed.
+Postoperative diagnosis: Acute appendicitis and cholelithiasis."""
+
+    applied = AnalysisService.apply_final_guardrails(note, report, [])
+
+    assert applied is False
+    assert report["claim_readiness_status"] == "Ready"
+    assert report["main_issue"] == "No major issues"
 
 
 def test_unrelated_procedure_families_without_section_conflict_is_not_auto_high_risk(client):

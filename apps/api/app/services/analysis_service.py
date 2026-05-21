@@ -105,6 +105,10 @@ class AnalysisService:
         report["ai_cpt_rationales"] = self._ai_cpt_rationales(ai_analysis) or self._validated_cpt_rationales(ai_analysis, candidates)
         self._force_raw_section_procedure_conflict(structured_note, findings, report)
         self._log_raw_section_review(structured_note, report)
+        if self.apply_final_guardrails(payload.note_text, report, findings):
+            procedures = []
+            candidates = []
+            estimates = []
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -240,6 +244,8 @@ class AnalysisService:
         )
         finding = ReviewEngine.conflict_finding("Confirm final operative procedure before coding.")
         report = self._deterministic_conflict_report(structured_note)
+        findings = [finding]
+        self.apply_final_guardrails(payload.note_text, report, findings)
         analysis = models.Analysis(
             note_id=note.id,
             status="completed",
@@ -249,7 +255,8 @@ class AnalysisService:
         )
         db.add(analysis)
         db.flush()
-        db.add(models.AuditFindingRecord(analysis_id=analysis.id, **finding.model_dump(exclude={"id"})))
+        for finding in findings:
+            db.add(models.AuditFindingRecord(analysis_id=analysis.id, **finding.model_dump(exclude={"id"})))
         db.commit()
         db.refresh(analysis)
         return self.get_analysis(db, UUID(analysis.id))
@@ -300,6 +307,60 @@ class AnalysisService:
                 "Coding should not proceed until the documentation is reconciled."
             ),
         }
+
+    @classmethod
+    def apply_final_guardrails(
+        cls,
+        note_text: str,
+        analysis_result: dict,
+        findings: list[AuditFinding] | None = None,
+    ) -> bool:
+        sections = ReviewEngine.extract_raw_sections(note_text)
+        procedure_families = ReviewEngine.deterministic_section_families(sections.get("procedure", ""))
+        technique_families = ReviewEngine.deterministic_section_families(sections.get("technique", ""))
+        explicit_combined = len(procedure_families) > 1
+
+        override_applied = False
+        if not explicit_combined and len(procedure_families) == 1 and len(technique_families) == 1:
+            procedure_family = next(iter(procedure_families))
+            technique_family = next(iter(technique_families))
+            override_applied = procedure_family != technique_family
+
+        if override_applied:
+            cls._apply_procedure_conflict_result(analysis_result)
+            if findings is not None and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
+                findings.append(ReviewEngine.conflict_finding("Confirm final operative procedure before coding."))
+
+        log_event(
+            logger,
+            logging.INFO,
+            "final_guardrail.procedure_conflict",
+            procedure_families=cls._family_values(procedure_families),
+            technique_families=cls._family_values(technique_families),
+            explicit_combined=explicit_combined,
+            override_applied=override_applied,
+        )
+        return override_applied
+
+    @staticmethod
+    def _apply_procedure_conflict_result(analysis_result: dict) -> None:
+        recommended_next_step = "Confirm final operative procedure before coding."
+        analysis_result["claim_readiness_status"] = "High Risk"
+        analysis_result["review_status"] = "High Risk"
+        analysis_result["claim_readiness"] = "high_risk"
+        analysis_result["claim_readiness_score"] = 0
+        analysis_result["main_issue"] = "Procedure documentation conflict"
+        analysis_result["detected_procedure"] = "Conflicting procedure documentation"
+        analysis_result["recommended_action"] = recommended_next_step
+        analysis_result["recommended_next_step"] = recommended_next_step
+        analysis_result["coding_recommendation"] = "Coder review needed"
+        analysis_result["suggested_code"] = None
+        analysis_result["total_estimated_reimbursement"] = 0
+        analysis_result["coding_summary"] = []
+        analysis_result["plain_english_review"] = (
+            "The procedure label and operative details describe different services. "
+            "Coding should not proceed until the documentation is reconciled."
+        )
 
     @staticmethod
     def classify_section_family(section_text: str) -> ProcedureFamily | None:
