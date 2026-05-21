@@ -140,7 +140,7 @@ class ReportGenerator:
             recommended_action = ReportGenerator._finding_recommendation(
                 findings,
                 {"procedure_documentation_conflict", "conflicting_documentation", "conflicting_procedures"},
-                "Confirm final operative procedure before coding",
+                "Confirm final operative procedure before coding.",
             )
         elif main_issue == "Missing laterality":
             recommended_action = "Clarify left or right side before review."

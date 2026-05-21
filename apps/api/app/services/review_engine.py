@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -34,6 +35,16 @@ class ReviewClassification:
     conflict_reason: str | None
     valid_combined_procedure: bool
     explicit_multi_procedure_intent: bool
+
+
+@dataclass(frozen=True)
+class DeterministicConflictGuardResult:
+    sections: dict[str, str]
+    procedure_family: ProcedureFamily | None
+    findings_family: ProcedureFamily | None
+    technique_family: ProcedureFamily | None
+    postop_family: ProcedureFamily | None
+    conflict_detected: bool
 
 
 class ReviewEngine:
@@ -102,6 +113,97 @@ class ReviewEngine:
         "postop_diagnosis": 2,
         "findings": 1,
     }
+    RAW_SECTION_NAMES = {
+        "procedure": "procedure",
+        "findings": "findings",
+        "technique": "technique",
+        "postoperative diagnosis": "postoperative_diagnosis",
+    }
+    RAW_SECTION_PATTERN = re.compile(
+        r"\b(Procedure|Findings|Technique|Postoperative diagnosis)\s*:\s*",
+        flags=re.IGNORECASE,
+    )
+    DETERMINISTIC_CONFLICT_FAMILIES = {
+        ProcedureFamily.APPENDECTOMY,
+        ProcedureFamily.CHOLECYSTECTOMY,
+    }
+
+    @classmethod
+    def deterministic_conflict_guard(cls, note_text: str) -> DeterministicConflictGuardResult:
+        sections = cls.extract_raw_sections(note_text)
+        procedure_family = cls.deterministic_section_family(sections.get("procedure", ""))
+        findings_family = cls.deterministic_section_family(sections.get("findings", ""))
+        technique_family = cls.deterministic_section_family(sections.get("technique", ""))
+        postop_family = cls.deterministic_section_family(sections.get("postoperative_diagnosis", ""))
+        procedure_families = cls.deterministic_section_families(sections.get("procedure", ""))
+        explicit_combined_header = cls.has_explicit_deterministic_multi_procedure_header(sections.get("procedure", ""))
+
+        conflict_detected = False
+        if not explicit_combined_header and len(procedure_families) <= 1:
+            conflict_detected = bool(
+                procedure_family
+                and (
+                    (technique_family and procedure_family != technique_family)
+                    or (findings_family and procedure_family != findings_family)
+                )
+            )
+
+        result = DeterministicConflictGuardResult(
+            sections=sections,
+            procedure_family=procedure_family,
+            findings_family=findings_family,
+            technique_family=technique_family,
+            postop_family=postop_family,
+            conflict_detected=conflict_detected,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "deterministic_conflict_guard",
+            procedure_family=procedure_family,
+            findings_family=findings_family,
+            technique_family=technique_family,
+            postop_family=postop_family,
+            conflict_detected=conflict_detected,
+        )
+        return result
+
+    @classmethod
+    def extract_raw_sections(cls, note_text: str) -> dict[str, str]:
+        matches = list(cls.RAW_SECTION_PATTERN.finditer(note_text))
+        sections: dict[str, str] = {}
+        for index, match in enumerate(matches):
+            raw_label = re.sub(r"\s+", " ", match.group(1).strip().lower())
+            label = cls.RAW_SECTION_NAMES.get(raw_label)
+            if not label:
+                continue
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(note_text)
+            sections[label] = note_text[match.end() : end].strip()
+        return sections
+
+    @classmethod
+    def deterministic_section_family(cls, section_text: str) -> ProcedureFamily | None:
+        families = cls.deterministic_section_families(section_text)
+        if len(families) != 1:
+            return None
+        return next(iter(families))
+
+    @classmethod
+    def deterministic_section_families(cls, section_text: str) -> set[ProcedureFamily]:
+        lowered = section_text.lower()
+        return {
+            family
+            for family in cls.DETERMINISTIC_CONFLICT_FAMILIES
+            if any(keyword in lowered for keyword in cls.FAMILY_KEYWORDS[family])
+        }
+
+    @classmethod
+    def has_explicit_deterministic_multi_procedure_header(cls, procedure_text: str) -> bool:
+        families = cls.deterministic_section_families(procedure_text)
+        if not {ProcedureFamily.APPENDECTOMY, ProcedureFamily.CHOLECYSTECTOMY}.issubset(families):
+            return False
+        lowered = procedure_text.lower()
+        return any(phrase in lowered for phrase in [" and ", " with ", "combined", "concurrent", "performed together"])
 
     @classmethod
     def classify(
@@ -179,7 +281,7 @@ class ReviewEngine:
         classification = cls.classify(structured_note, candidates)
         if not classification.procedure_conflict:
             return None
-        return cls.conflict_finding("Confirm final operative procedure before coding")
+        return cls.conflict_finding("Confirm final operative procedure before coding.")
 
     @classmethod
     def strongest_family(cls, text: str) -> ProcedureFamily | None:
@@ -277,7 +379,7 @@ class ReviewEngine:
         return len(between) <= 120 and any(term in between for term in [" and ", " with ", " then ", " also ", " followed by "])
 
     @staticmethod
-    def conflict_finding(recommendation: str = "Confirm final operative procedure before coding") -> AuditFinding:
+    def conflict_finding(recommendation: str = "Confirm final operative procedure before coding.") -> AuditFinding:
         return AuditFinding(
             title="Procedure documentation conflict",
             severity="high",

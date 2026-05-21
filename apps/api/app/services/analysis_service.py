@@ -32,7 +32,7 @@ from app.parsing.note_parser import OperativeNoteParser
 from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
 from app.safety.phi_detector import contains_phi_like_identifier
-from app.services.review_engine import ProcedureFamily, ReviewClassification, ReviewEngine
+from app.services.review_engine import DeterministicConflictGuardResult, ProcedureFamily, ReviewClassification, ReviewEngine
 
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,10 @@ class AnalysisService:
         if contains_phi_like_identifier(f"{payload.title}\n{payload.note_text}"):
             log_event(logger, logging.WARNING, "analysis.rejected", reason="phi_like_identifier_detected")
             raise ValueError(PHI_REJECTION_MESSAGE)
+
+        conflict_guard = ReviewEngine.deterministic_conflict_guard(payload.note_text)
+        if conflict_guard.conflict_detected:
+            return self._create_deterministic_conflict_analysis(db, payload, conflict_guard)
 
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
@@ -166,7 +170,7 @@ class AnalysisService:
             report["claim_readiness_status"] = "High Risk"
             report["claim_readiness"] = "high_risk"
             report["main_issue"] = "Procedure documentation conflict"
-            report["recommended_action"] = conflict.recommendation if conflict else "Confirm final operative procedure before coding"
+            report["recommended_action"] = conflict.recommendation if conflict else "Confirm final operative procedure before coding."
             report["detected_procedure"] = "Conflicting procedure documentation"
             report["coding_recommendation"] = "Coder review needed"
             report["suggested_code"] = None
@@ -203,13 +207,99 @@ class AnalysisService:
         report["claim_readiness"] = "high_risk"
         report["main_issue"] = "Procedure documentation conflict"
         report["detected_procedure"] = "Conflicting procedure documentation"
-        report["recommended_action"] = "Confirm final operative procedure before coding"
+        report["recommended_action"] = "Confirm final operative procedure before coding."
         report["coding_recommendation"] = "Coder review needed"
         report["suggested_code"] = None
         report["plain_english_review"] = (
             "The procedure label and operative details describe different services. "
             "Coding should not proceed until the documentation is reconciled."
         )
+
+    def _create_deterministic_conflict_analysis(
+        self,
+        db: Session,
+        payload: OperativeNote,
+        conflict_guard: DeterministicConflictGuardResult,
+    ) -> AnalysisReport:
+        note = models.Note(title=payload.title, note_text=payload.note_text)
+        db.add(note)
+        db.flush()
+
+        structured_note = StructuredOperativeNote(
+            raw_text=payload.note_text,
+            parsed_sections={
+                "Procedure": conflict_guard.sections.get("procedure", ""),
+                "Findings": conflict_guard.sections.get("findings", ""),
+                "Technique": conflict_guard.sections.get("technique", ""),
+                "Postoperative diagnosis": conflict_guard.sections.get("postoperative_diagnosis", ""),
+            },
+            detected_procedure_name="Conflicting procedure documentation",
+            missing_sections=[],
+            parsing_confidence=0.9,
+            structure_quality="Strong structure",
+        )
+        finding = ReviewEngine.conflict_finding("Confirm final operative procedure before coding.")
+        report = self._deterministic_conflict_report(structured_note)
+        analysis = models.Analysis(
+            note_id=note.id,
+            status="completed",
+            summary="Detected procedure documentation conflict before coding analysis.",
+            report=report,
+            total_estimated_reimbursement=0,
+        )
+        db.add(analysis)
+        db.flush()
+        db.add(models.AuditFindingRecord(analysis_id=analysis.id, **finding.model_dump(exclude={"id"})))
+        db.commit()
+        db.refresh(analysis)
+        return self.get_analysis(db, UUID(analysis.id))
+
+    @staticmethod
+    def _deterministic_conflict_report(structured_note: StructuredOperativeNote) -> dict:
+        recommended_next_step = "Confirm final operative procedure before coding."
+        return {
+            "claim_readiness": "high_risk",
+            "claim_readiness_score": 0,
+            "claim_readiness_status": "High Risk",
+            "review_status": "High Risk",
+            "claim_readiness_explanation": (
+                "The procedure label and operative details describe different services. "
+                "Coding should not proceed until documentation is reconciled."
+            ),
+            "claim_readiness_reasons": [
+                "Procedure section and operative details point to different surgical families.",
+                "Human review is required before coding.",
+            ],
+            "recommended_action": recommended_next_step,
+            "recommended_next_step": recommended_next_step,
+            "main_issue": "Procedure documentation conflict",
+            "detected_procedure": "Conflicting procedure documentation",
+            "coding_recommendation": "Coder review needed",
+            "suggested_code": None,
+            "total_estimated_reimbursement": 0,
+            "procedure_count": 0,
+            "audit_issue_count": 1,
+            "coding_summary": [],
+            "structured_note": structured_note.model_dump(),
+            "analysis_mode": "Rules mode",
+            "ai_assist_status": "Standard review completed.",
+            "ai_provider": None,
+            "ai_model": None,
+            "ai_procedure_summary": None,
+            "ai_reasoning_summary": None,
+            "ai_documentation_gaps": [],
+            "ai_suggested_clarifications": [],
+            "ai_confidence_reasoning": [],
+            "ai_likely_procedure_family": None,
+            "ai_likely_cpt_category": None,
+            "ai_probable_operative_intent": None,
+            "ai_supporting_texts": [],
+            "ai_cpt_rationales": [],
+            "plain_english_review": (
+                "The procedure label and operative details describe different services. "
+                "Coding should not proceed until the documentation is reconciled."
+            ),
+        }
 
     @staticmethod
     def classify_section_family(section_text: str) -> ProcedureFamily | None:
