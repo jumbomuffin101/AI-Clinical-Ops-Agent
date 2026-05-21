@@ -136,10 +136,10 @@ class ReviewEngine:
         technique_family = cls.deterministic_section_family(sections.get("technique", ""))
         postop_family = cls.deterministic_section_family(sections.get("postoperative_diagnosis", ""))
         procedure_families = cls.deterministic_section_families(sections.get("procedure", ""))
-        explicit_combined_header = cls.has_explicit_deterministic_multi_procedure_header(sections.get("procedure", ""))
+        valid_combined_procedure = cls.is_valid_combined_procedure(procedure_families)
 
         conflict_detected = False
-        if not explicit_combined_header and len(procedure_families) <= 1:
+        if not valid_combined_procedure:
             conflict_detected = bool(
                 procedure_family
                 and (
@@ -198,14 +198,6 @@ class ReviewEngine:
         }
 
     @classmethod
-    def has_explicit_deterministic_multi_procedure_header(cls, procedure_text: str) -> bool:
-        families = cls.deterministic_section_families(procedure_text)
-        if not {ProcedureFamily.APPENDECTOMY, ProcedureFamily.CHOLECYSTECTOMY}.issubset(families):
-            return False
-        lowered = procedure_text.lower()
-        return any(phrase in lowered for phrase in [" and ", " with ", "combined", "concurrent", "performed together"])
-
-    @classmethod
     def classify(
         cls,
         structured_note: StructuredOperativeNote,
@@ -224,7 +216,7 @@ class ReviewEngine:
         diagnosis_procedures = cls.extract_section_procedures(sections.get("Postoperative diagnosis", ""))
         procedure_text = sections.get("Procedure", "") or structured_note.raw_text
         explicit_multi_procedure_intent = cls.has_explicit_multi_procedure_intent(procedure_text)
-        valid_combined_procedure = cls.is_valid_combined_procedure(procedure_header_procedures, technique_procedures, explicit_multi_procedure_intent)
+        valid_combined_procedure = cls.is_valid_combined_procedure(procedure_header_procedures)
 
         header_technique_conflict = bool(header_family and technique_family and header_family != technique_family)
         diagnosis_technique_conflict = bool(diagnosis_family and technique_family and diagnosis_family != technique_family)
@@ -325,16 +317,8 @@ class ReviewEngine:
         }
 
     @staticmethod
-    def is_valid_combined_procedure(
-        procedure_header_procedures: set[ProcedureFamily],
-        technique_procedures: set[ProcedureFamily],
-        explicit_multi_procedure_intent: bool,
-    ) -> bool:
-        return (
-            explicit_multi_procedure_intent
-            and len(procedure_header_procedures) > 1
-            and procedure_header_procedures.issubset(technique_procedures)
-        )
+    def is_valid_combined_procedure(procedure_header_procedures: set[ProcedureFamily]) -> bool:
+        return len(procedure_header_procedures) > 1
 
     @classmethod
     def has_explicit_multi_procedure_intent(cls, procedure_text: str) -> bool:

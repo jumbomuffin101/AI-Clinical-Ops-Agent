@@ -321,6 +321,34 @@ Postoperative diagnosis: Acute appendicitis."""
     assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
 
 
+def test_singleProcedureHeaderDifferentTechnique_shouldConflict(client):
+    note = """Procedure: Laparoscopic cholecystectomy.
+Technique: The appendix was divided at the base with a stapler and removed in a retrieval bag.
+Postoperative diagnosis: Cholelithiasis."""
+    response = client.post("/api/notes", json={"title": "Single header conflicting technique", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["claim_readiness_status"] == "High Risk"
+    assert body["report"]["main_issue"] == "Procedure documentation conflict"
+    assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
+
+
+def test_singleProcedureHeaderDifferentTechnique_shouldNotBecomeCombined(client):
+    note = """Procedure: Laparoscopic cholecystectomy.
+Technique: The appendix was divided at the base with a stapler and removed in a retrieval bag.
+Postoperative diagnosis: Cholelithiasis."""
+    response = client.post("/api/notes", json={"title": "Single header not combined", "note_text": note})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
+    assert body["report"]["coding_recommendation"] == "Coder review needed"
+    assert body["report"]["suggested_code"] is None
+    assert body["extracted_procedures"] == []
+    assert body["cpt_candidates"] == []
+
+
 def test_unrelated_procedure_families_without_section_conflict_is_not_auto_high_risk(client):
     note = (
         "Laparoscopic cholecystectomy was documented in the note. "
