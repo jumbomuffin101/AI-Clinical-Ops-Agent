@@ -59,9 +59,10 @@ class AnalysisService:
             log_event(logger, logging.WARNING, "analysis.rejected", reason="phi_like_identifier_detected")
             raise ValueError(PHI_REJECTION_MESSAGE)
 
+        debug_section_analysis = ReviewEngine.debug_section_analysis(payload.note_text)
         section_validation = ReviewEngine.validate_section_consistency(payload.note_text)
         if section_validation["has_conflict"]:
-            return self._create_deterministic_conflict_analysis(db, payload)
+            return self._create_deterministic_conflict_analysis(db, payload, debug_section_analysis)
 
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
@@ -109,6 +110,7 @@ class AnalysisService:
             procedures = []
             candidates = []
             estimates = []
+        report["debug_section_analysis"] = debug_section_analysis
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -223,6 +225,7 @@ class AnalysisService:
         self,
         db: Session,
         payload: OperativeNote,
+        debug_section_analysis: dict,
     ) -> AnalysisReport:
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
@@ -244,6 +247,7 @@ class AnalysisService:
         )
         finding = ReviewEngine.conflict_finding("Confirm final operative procedure before coding.")
         report = self._deterministic_conflict_report(structured_note)
+        report["debug_section_analysis"] = debug_section_analysis
         findings = [finding]
         self.apply_final_guardrails(payload.note_text, report, findings)
         analysis = models.Analysis(

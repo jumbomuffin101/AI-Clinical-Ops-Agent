@@ -440,6 +440,31 @@ Postoperative diagnosis: Acute appendicitis."""
     }
 
 
+def test_debug_section_analysis_exposes_expected_intermediate_values():
+    note = """Procedure: Laparoscopic appendectomy
+
+Findings: Gallstones with inflamed gallbladder
+
+Technique: Gallbladder was dissected from the liver bed and removed
+
+Postoperative diagnosis: Acute appendicitis"""
+
+    debug = ReviewEngine.debug_section_analysis(note)
+
+    assert debug == {
+        "procedure_text": "Laparoscopic appendectomy",
+        "technique_text": "Gallbladder was dissected from the liver bed and removed",
+        "findings_text": "Gallstones with inflamed gallbladder",
+        "diagnosis_text": "Acute appendicitis",
+        "procedure_families": ["appendectomy"],
+        "technique_families": ["cholecystectomy"],
+        "findings_families": ["cholecystectomy"],
+        "diagnosis_families": ["appendectomy"],
+        "explicit_combined": False,
+        "conflict_detected": True,
+    }
+
+
 def test_section_consistency_validator_allows_explicit_combined_procedure():
     note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
 Technique: The appendix was divided at the base with a stapler and removed. The cystic duct and cystic artery were clipped and divided, and the gallbladder was removed.

@@ -120,31 +120,26 @@ class ReviewEngine:
         ProcedureFamily.HERNIA_REPAIR,
         ProcedureFamily.BOWEL_RESECTION,
     }
+    DEBUG_FAMILY_LABELS = {
+        ProcedureFamily.APPENDECTOMY: "appendectomy",
+        ProcedureFamily.CHOLECYSTECTOMY: "cholecystectomy",
+        ProcedureFamily.HERNIA_REPAIR: "hernia",
+        ProcedureFamily.BOWEL_RESECTION: "bowel",
+    }
 
     @classmethod
     def validate_section_consistency(cls, note_text: str) -> dict:
-        sections = cls.extract_raw_sections(note_text)
-        procedure_families = cls.deterministic_section_families(sections.get("procedure", ""))
-        findings_families = cls.deterministic_section_families(sections.get("findings", ""))
-        technique_families = cls.deterministic_section_families(sections.get("technique", ""))
-        postop_families = cls.deterministic_section_families(sections.get("postoperative_diagnosis", ""))
-        explicit_combined = len(procedure_families) > 1
-        has_conflict = (
-            not explicit_combined
-            and len(procedure_families) == 1
-            and len(technique_families) == 1
-            and next(iter(procedure_families)) != next(iter(technique_families))
-        )
-
+        debug = cls.debug_section_analysis(note_text)
+        has_conflict = debug["conflict_detected"]
         log_event(
             logger,
             logging.INFO,
             "section_consistency.validation",
-            procedure_families=cls._sorted_family_values(procedure_families),
-            findings_families=cls._sorted_family_values(findings_families),
-            technique_families=cls._sorted_family_values(technique_families),
-            postop_families=cls._sorted_family_values(postop_families),
-            explicit_combined=explicit_combined,
+            procedure_families=debug["procedure_families"],
+            findings_families=debug["findings_families"],
+            technique_families=debug["technique_families"],
+            diagnosis_families=debug["diagnosis_families"],
+            explicit_combined=debug["explicit_combined"],
             has_conflict=has_conflict,
         )
         if not has_conflict:
@@ -165,6 +160,35 @@ class ReviewEngine:
             "recommended_next_step": "Confirm final operative procedure before coding.",
             "coding_recommendation": "Coder review needed",
             "suggested_code": None,
+        }
+
+    @classmethod
+    def debug_section_analysis(cls, note_text: str) -> dict:
+        sections = cls.extract_raw_sections(note_text)
+        procedure_families = cls.deterministic_section_families(sections.get("procedure", ""))
+        findings_families = cls.deterministic_section_families(sections.get("findings", ""))
+        technique_families = cls.deterministic_section_families(sections.get("technique", ""))
+        postop_families = cls.deterministic_section_families(sections.get("postoperative_diagnosis", ""))
+        if "appendicitis" in sections.get("postoperative_diagnosis", "").lower():
+            postop_families.add(ProcedureFamily.APPENDECTOMY)
+        explicit_combined = len(procedure_families) > 1
+        has_conflict = (
+            not explicit_combined
+            and len(procedure_families) == 1
+            and len(technique_families) == 1
+            and next(iter(procedure_families)) != next(iter(technique_families))
+        )
+        return {
+            "procedure_text": sections.get("procedure", ""),
+            "technique_text": sections.get("technique", ""),
+            "findings_text": sections.get("findings", ""),
+            "diagnosis_text": sections.get("postoperative_diagnosis", ""),
+            "procedure_families": cls._debug_family_values(procedure_families),
+            "technique_families": cls._debug_family_values(technique_families),
+            "findings_families": cls._debug_family_values(findings_families),
+            "diagnosis_families": cls._debug_family_values(postop_families),
+            "explicit_combined": explicit_combined,
+            "conflict_detected": has_conflict,
         }
 
     @classmethod
@@ -349,6 +373,10 @@ class ReviewEngine:
     @staticmethod
     def _sorted_family_values(families: set[ProcedureFamily]) -> list[str]:
         return sorted(family.value for family in families)
+
+    @classmethod
+    def _debug_family_values(cls, families: set[ProcedureFamily]) -> list[str]:
+        return sorted(cls.DEBUG_FAMILY_LABELS.get(family, family.value.lower()) for family in families)
 
     @staticmethod
     def _terms_linked(text: str, left_term: str, right_term: str) -> bool:
