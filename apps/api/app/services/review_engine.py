@@ -37,16 +37,6 @@ class ReviewClassification:
     explicit_multi_procedure_intent: bool
 
 
-@dataclass(frozen=True)
-class DeterministicConflictGuardResult:
-    sections: dict[str, str]
-    procedure_family: ProcedureFamily | None
-    findings_family: ProcedureFamily | None
-    technique_family: ProcedureFamily | None
-    postop_family: ProcedureFamily | None
-    conflict_detected: bool
-
-
 class ReviewEngine:
     FAMILY_KEYWORDS = {
         ProcedureFamily.APPENDECTOMY: [
@@ -72,6 +62,7 @@ class ReviewEngine:
             "conjoint tendon",
         ],
         ProcedureFamily.BOWEL_RESECTION: [
+            "bowel",
             "bowel resection",
             "small bowel",
             "ileum",
@@ -126,47 +117,55 @@ class ReviewEngine:
     DETERMINISTIC_CONFLICT_FAMILIES = {
         ProcedureFamily.APPENDECTOMY,
         ProcedureFamily.CHOLECYSTECTOMY,
+        ProcedureFamily.HERNIA_REPAIR,
+        ProcedureFamily.BOWEL_RESECTION,
     }
 
     @classmethod
-    def deterministic_conflict_guard(cls, note_text: str) -> DeterministicConflictGuardResult:
+    def validate_section_consistency(cls, note_text: str) -> dict:
         sections = cls.extract_raw_sections(note_text)
-        procedure_family = cls.deterministic_section_family(sections.get("procedure", ""))
-        findings_family = cls.deterministic_section_family(sections.get("findings", ""))
-        technique_family = cls.deterministic_section_family(sections.get("technique", ""))
-        postop_family = cls.deterministic_section_family(sections.get("postoperative_diagnosis", ""))
         procedure_families = cls.deterministic_section_families(sections.get("procedure", ""))
-        valid_combined_procedure = cls.is_valid_combined_procedure(procedure_families)
-
-        conflict_detected = False
-        if not valid_combined_procedure:
-            conflict_detected = bool(
-                procedure_family
-                and (
-                    (technique_family and procedure_family != technique_family)
-                    or (findings_family and procedure_family != findings_family)
-                )
-            )
-
-        result = DeterministicConflictGuardResult(
-            sections=sections,
-            procedure_family=procedure_family,
-            findings_family=findings_family,
-            technique_family=technique_family,
-            postop_family=postop_family,
-            conflict_detected=conflict_detected,
+        findings_families = cls.deterministic_section_families(sections.get("findings", ""))
+        technique_families = cls.deterministic_section_families(sections.get("technique", ""))
+        postop_families = cls.deterministic_section_families(sections.get("postoperative_diagnosis", ""))
+        explicit_combined = len(procedure_families) > 1
+        has_conflict = (
+            not explicit_combined
+            and len(procedure_families) == 1
+            and len(technique_families) == 1
+            and next(iter(procedure_families)) != next(iter(technique_families))
         )
+
         log_event(
             logger,
             logging.INFO,
-            "deterministic_conflict_guard",
-            procedure_family=procedure_family,
-            findings_family=findings_family,
-            technique_family=technique_family,
-            postop_family=postop_family,
-            conflict_detected=conflict_detected,
+            "section_consistency.validation",
+            procedure_families=cls._sorted_family_values(procedure_families),
+            findings_families=cls._sorted_family_values(findings_families),
+            technique_families=cls._sorted_family_values(technique_families),
+            postop_families=cls._sorted_family_values(postop_families),
+            explicit_combined=explicit_combined,
+            has_conflict=has_conflict,
         )
-        return result
+        if not has_conflict:
+            return {
+                "has_conflict": False,
+                "review_status": None,
+                "main_issue": None,
+                "detected_procedure": None,
+                "recommended_next_step": None,
+                "coding_recommendation": None,
+                "suggested_code": None,
+            }
+        return {
+            "has_conflict": True,
+            "review_status": "High Risk",
+            "main_issue": "Procedure documentation conflict",
+            "detected_procedure": "Conflicting procedure documentation",
+            "recommended_next_step": "Confirm final operative procedure before coding.",
+            "coding_recommendation": "Coder review needed",
+            "suggested_code": None,
+        }
 
     @classmethod
     def extract_raw_sections(cls, note_text: str) -> dict[str, str]:
@@ -219,8 +218,8 @@ class ReviewEngine:
         valid_combined_procedure = cls.is_valid_combined_procedure(procedure_header_procedures)
 
         header_technique_conflict = bool(header_family and technique_family and header_family != technique_family)
-        diagnosis_technique_conflict = bool(diagnosis_family and technique_family and diagnosis_family != technique_family)
-        procedure_conflict = False if valid_combined_procedure else (header_technique_conflict or diagnosis_technique_conflict)
+        diagnosis_technique_conflict = False
+        procedure_conflict = False if valid_combined_procedure else header_technique_conflict
         conflict_reason = None
         if procedure_conflict and header_technique_conflict:
             procedure_conflict = True

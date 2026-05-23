@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db.session import Base, get_db
 from app.main import app
 from app.services.analysis_service import AnalysisService
+from app.services.review_engine import ReviewEngine
 
 
 SAMPLE_NOTE = (
@@ -419,6 +420,34 @@ Postoperative diagnosis: Acute appendicitis and cholelithiasis."""
     assert applied is False
     assert report["claim_readiness_status"] == "Ready"
     assert report["main_issue"] == "No major issues"
+
+
+def test_section_consistency_validator_detects_appendectomy_gallbladder_conflict():
+    note = """Procedure: Laparoscopic appendectomy.
+Technique: Gallbladder was dissected from the liver bed and removed.
+Postoperative diagnosis: Acute appendicitis."""
+
+    result = ReviewEngine.validate_section_consistency(note)
+
+    assert result == {
+        "has_conflict": True,
+        "review_status": "High Risk",
+        "main_issue": "Procedure documentation conflict",
+        "detected_procedure": "Conflicting procedure documentation",
+        "recommended_next_step": "Confirm final operative procedure before coding.",
+        "coding_recommendation": "Coder review needed",
+        "suggested_code": None,
+    }
+
+
+def test_section_consistency_validator_allows_explicit_combined_procedure():
+    note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
+Technique: The appendix was divided at the base with a stapler and removed. The cystic duct and cystic artery were clipped and divided, and the gallbladder was removed.
+Postoperative diagnosis: Acute appendicitis and cholelithiasis."""
+
+    result = ReviewEngine.validate_section_consistency(note)
+
+    assert result["has_conflict"] is False
 
 
 def test_unrelated_procedure_families_without_section_conflict_is_not_auto_high_risk(client):

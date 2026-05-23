@@ -32,7 +32,7 @@ from app.parsing.note_parser import OperativeNoteParser
 from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
 from app.safety.phi_detector import contains_phi_like_identifier
-from app.services.review_engine import DeterministicConflictGuardResult, ProcedureFamily, ReviewClassification, ReviewEngine
+from app.services.review_engine import ProcedureFamily, ReviewClassification, ReviewEngine
 
 
 logger = logging.getLogger(__name__)
@@ -59,9 +59,9 @@ class AnalysisService:
             log_event(logger, logging.WARNING, "analysis.rejected", reason="phi_like_identifier_detected")
             raise ValueError(PHI_REJECTION_MESSAGE)
 
-        conflict_guard = ReviewEngine.deterministic_conflict_guard(payload.note_text)
-        if conflict_guard.conflict_detected:
-            return self._create_deterministic_conflict_analysis(db, payload, conflict_guard)
+        section_validation = ReviewEngine.validate_section_consistency(payload.note_text)
+        if section_validation["has_conflict"]:
+            return self._create_deterministic_conflict_analysis(db, payload)
 
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
@@ -223,19 +223,19 @@ class AnalysisService:
         self,
         db: Session,
         payload: OperativeNote,
-        conflict_guard: DeterministicConflictGuardResult,
     ) -> AnalysisReport:
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
         db.flush()
 
+        sections = ReviewEngine.extract_raw_sections(payload.note_text)
         structured_note = StructuredOperativeNote(
             raw_text=payload.note_text,
             parsed_sections={
-                "Procedure": conflict_guard.sections.get("procedure", ""),
-                "Findings": conflict_guard.sections.get("findings", ""),
-                "Technique": conflict_guard.sections.get("technique", ""),
-                "Postoperative diagnosis": conflict_guard.sections.get("postoperative_diagnosis", ""),
+                "Procedure": sections.get("procedure", ""),
+                "Findings": sections.get("findings", ""),
+                "Technique": sections.get("technique", ""),
+                "Postoperative diagnosis": sections.get("postoperative_diagnosis", ""),
             },
             detected_procedure_name="Conflicting procedure documentation",
             missing_sections=[],
@@ -315,19 +315,16 @@ class AnalysisService:
         analysis_result: dict,
         findings: list[AuditFinding] | None = None,
     ) -> bool:
+        validation = ReviewEngine.validate_section_consistency(note_text)
         sections = ReviewEngine.extract_raw_sections(note_text)
         procedure_families = ReviewEngine.deterministic_section_families(sections.get("procedure", ""))
         technique_families = ReviewEngine.deterministic_section_families(sections.get("technique", ""))
         explicit_combined = len(procedure_families) > 1
 
-        override_applied = False
-        if not explicit_combined and len(procedure_families) == 1 and len(technique_families) == 1:
-            procedure_family = next(iter(procedure_families))
-            technique_family = next(iter(technique_families))
-            override_applied = procedure_family != technique_family
+        override_applied = bool(validation["has_conflict"])
 
         if override_applied:
-            cls._apply_procedure_conflict_result(analysis_result)
+            cls._apply_procedure_conflict_result(analysis_result, validation)
             if findings is not None and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
                 findings.append(ReviewEngine.conflict_finding("Confirm final operative procedure before coding."))
 
@@ -343,18 +340,18 @@ class AnalysisService:
         return override_applied
 
     @staticmethod
-    def _apply_procedure_conflict_result(analysis_result: dict) -> None:
-        recommended_next_step = "Confirm final operative procedure before coding."
-        analysis_result["claim_readiness_status"] = "High Risk"
-        analysis_result["review_status"] = "High Risk"
+    def _apply_procedure_conflict_result(analysis_result: dict, validation: dict) -> None:
+        recommended_next_step = validation["recommended_next_step"]
+        analysis_result["claim_readiness_status"] = validation["review_status"]
+        analysis_result["review_status"] = validation["review_status"]
         analysis_result["claim_readiness"] = "high_risk"
         analysis_result["claim_readiness_score"] = 0
-        analysis_result["main_issue"] = "Procedure documentation conflict"
-        analysis_result["detected_procedure"] = "Conflicting procedure documentation"
+        analysis_result["main_issue"] = validation["main_issue"]
+        analysis_result["detected_procedure"] = validation["detected_procedure"]
         analysis_result["recommended_action"] = recommended_next_step
         analysis_result["recommended_next_step"] = recommended_next_step
-        analysis_result["coding_recommendation"] = "Coder review needed"
-        analysis_result["suggested_code"] = None
+        analysis_result["coding_recommendation"] = validation["coding_recommendation"]
+        analysis_result["suggested_code"] = validation["suggested_code"]
         analysis_result["total_estimated_reimbursement"] = 0
         analysis_result["coding_summary"] = []
         analysis_result["plain_english_review"] = (
