@@ -85,6 +85,7 @@ type AnalysisReport = {
   audit_findings: AuditFinding[];
   reimbursement_estimates: ReimbursementEstimate[];
   total_estimated_reimbursement: number;
+  debug_section_analysis?: DebugSectionAnalysis | null;
   report: {
     claim_readiness_score: number;
     claim_readiness_status: string;
@@ -317,13 +318,13 @@ export default function Home() {
   }, [identifierWarning]);
 
   useEffect(() => {
-    const debugSectionAnalysis = visibleReport?.report.debug_section_analysis;
+    const debugSectionAnalysis = debugSectionAnalysisForReport(visibleReport);
     if (!debugSectionAnalysis) return;
     console.log(
       "[SECTION DEBUG]",
       JSON.stringify(debugSectionAnalysis, null, 2)
     );
-  }, [visibleReport?.id, visibleReport?.report.debug_section_analysis]);
+  }, [visibleReport]);
 
   function chooseExample(exampleId: string) {
     const example = examples.find((item) => item.id === exampleId) ?? examples[0];
@@ -800,43 +801,20 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
 
 function DebugAnalysisPanel({ report }: { report: AnalysisReport | null }) {
   const [open, setOpen] = useState(false);
-  const debugSectionAnalysis = report?.report.debug_section_analysis;
+  const debugSectionAnalysis = debugSectionAnalysisForReport(report);
   if (!debugSectionAnalysis) return null;
 
   return (
     <Disclosure title="Debug Analysis" open={open} onToggle={() => setOpen((value) => !value)}>
-      <div className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-2">
-          <DebugField label="Procedure text" value={debugSectionAnalysis.procedure_text} />
-          <DebugField label="Technique text" value={debugSectionAnalysis.technique_text} />
-          <DebugField label="Findings text" value={debugSectionAnalysis.findings_text} />
-          <DebugField label="Diagnosis text" value={debugSectionAnalysis.diagnosis_text} />
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <DebugField label="Procedure families" value={debugSectionAnalysis.procedure_families.join(", ") || "None"} />
-          <DebugField label="Technique families" value={debugSectionAnalysis.technique_families.join(", ") || "None"} />
-          <DebugField label="Findings families" value={debugSectionAnalysis.findings_families.join(", ") || "None"} />
-          <DebugField label="Diagnosis families" value={debugSectionAnalysis.diagnosis_families.join(", ") || "None"} />
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <DebugField label="Explicit combined" value={String(debugSectionAnalysis.explicit_combined)} />
-          <DebugField label="Conflict detected" value={String(debugSectionAnalysis.conflict_detected)} />
-        </div>
-        <pre className="max-h-96 overflow-auto rounded-xl border border-[#dce9e7] bg-[#0f2024] p-4 text-xs leading-5 text-[#d7ece8]">
-          {JSON.stringify(debugSectionAnalysis, null, 2)}
-        </pre>
-      </div>
+      <pre className="max-h-96 overflow-auto rounded-xl border border-[#dce9e7] bg-[#0f2024] p-4 text-xs leading-5 text-[#d7ece8]">
+        {JSON.stringify(debugSectionAnalysis, null, 2)}
+      </pre>
     </Disclosure>
   );
 }
 
-function DebugField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-[#dce9e7] bg-[#f9fcfb] p-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#789093]">{label}</p>
-      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-5 text-[#31545b]">{value || "Not detected"}</p>
-    </div>
-  );
+function debugSectionAnalysisForReport(report: AnalysisReport | null) {
+  return report?.debug_section_analysis ?? report?.report.debug_section_analysis ?? null;
 }
 
 function CptCandidates({ report }: { report: AnalysisReport | null }) {

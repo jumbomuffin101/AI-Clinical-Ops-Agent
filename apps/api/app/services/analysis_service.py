@@ -33,6 +33,7 @@ from app.providers.factory import get_llm_provider
 from app.rag.retriever import KeywordRetriever
 from app.safety.phi_detector import contains_phi_like_identifier
 from app.services.review_engine import ProcedureFamily, ReviewClassification, ReviewEngine
+from app.services.section_consistency import SectionConsistencyResult, analyze_section_consistency
 
 
 logger = logging.getLogger(__name__)
@@ -59,10 +60,8 @@ class AnalysisService:
             log_event(logger, logging.WARNING, "analysis.rejected", reason="phi_like_identifier_detected")
             raise ValueError(PHI_REJECTION_MESSAGE)
 
-        debug_section_analysis = ReviewEngine.debug_section_analysis(payload.note_text)
-        section_validation = ReviewEngine.validate_section_consistency(payload.note_text)
-        if section_validation["has_conflict"]:
-            return self._create_deterministic_conflict_analysis(db, payload, debug_section_analysis)
+        section_result = analyze_section_consistency(payload.note_text)
+        debug_section_analysis = section_result.debug_payload()
 
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
@@ -88,7 +87,6 @@ class AnalysisService:
         estimates = self.estimator.run(candidates)
         summary, report = self.report_generator.run(procedures, candidates, findings, estimates)
         self._apply_review_priority(report, findings)
-        self._log_review_classification(classification, report)
         report["structured_note"] = structured_note.model_dump()
         report["analysis_mode"] = "Hybrid AI mode" if ai_analysis else "Rules mode"
         report["ai_assist_status"] = ai_status
@@ -104,13 +102,13 @@ class AnalysisService:
         report["ai_probable_operative_intent"] = ai_analysis.probable_operative_intent if ai_analysis else None
         report["ai_supporting_texts"] = self._ai_supporting_texts(ai_analysis)
         report["ai_cpt_rationales"] = self._ai_cpt_rationales(ai_analysis) or self._validated_cpt_rationales(ai_analysis, candidates)
-        self._force_raw_section_procedure_conflict(structured_note, findings, report)
-        self._log_raw_section_review(structured_note, report)
-        if self.apply_final_guardrails(payload.note_text, report, findings):
+        if self.apply_final_guardrails(payload.note_text, report, findings, section_result):
             procedures = []
             candidates = []
             estimates = []
+            summary = "Detected procedure documentation conflict before coding analysis."
         report["debug_section_analysis"] = debug_section_analysis
+        self._log_review_classification(classification, report)
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -197,166 +195,70 @@ class AnalysisService:
             report["recommended_action"] = "Clarify left or right side before review."
 
     @classmethod
-    def _force_raw_section_procedure_conflict(
-        cls,
-        structured_note: StructuredOperativeNote,
-        findings: list[AuditFinding],
-        report: dict,
-    ) -> None:
-        classification = ReviewEngine.classify(structured_note)
-        if not classification.procedure_conflict:
-            return
-
-        if not any(finding.category == "procedure_documentation_conflict" for finding in findings):
-            findings.append(ReviewEngine.conflict_finding())
-        report["claim_readiness_status"] = "High Risk"
-        report["claim_readiness"] = "high_risk"
-        report["main_issue"] = "Procedure documentation conflict"
-        report["detected_procedure"] = "Conflicting procedure documentation"
-        report["recommended_action"] = "Confirm final operative procedure before coding."
-        report["coding_recommendation"] = "Coder review needed"
-        report["suggested_code"] = None
-        report["plain_english_review"] = (
-            "The procedure label and operative details describe different services. "
-            "Coding should not proceed until the documentation is reconciled."
-        )
-
-    def _create_deterministic_conflict_analysis(
-        self,
-        db: Session,
-        payload: OperativeNote,
-        debug_section_analysis: dict,
-    ) -> AnalysisReport:
-        note = models.Note(title=payload.title, note_text=payload.note_text)
-        db.add(note)
-        db.flush()
-
-        sections = ReviewEngine.extract_raw_sections(payload.note_text)
-        structured_note = StructuredOperativeNote(
-            raw_text=payload.note_text,
-            parsed_sections={
-                "Procedure": sections.get("procedure", ""),
-                "Findings": sections.get("findings", ""),
-                "Technique": sections.get("technique", ""),
-                "Postoperative diagnosis": sections.get("postoperative_diagnosis", ""),
-            },
-            detected_procedure_name="Conflicting procedure documentation",
-            missing_sections=[],
-            parsing_confidence=0.9,
-            structure_quality="Strong structure",
-        )
-        finding = ReviewEngine.conflict_finding("Confirm final operative procedure before coding.")
-        report = self._deterministic_conflict_report(structured_note)
-        report["debug_section_analysis"] = debug_section_analysis
-        findings = [finding]
-        self.apply_final_guardrails(payload.note_text, report, findings)
-        analysis = models.Analysis(
-            note_id=note.id,
-            status="completed",
-            summary="Detected procedure documentation conflict before coding analysis.",
-            report=report,
-            total_estimated_reimbursement=0,
-        )
-        db.add(analysis)
-        db.flush()
-        for finding in findings:
-            db.add(models.AuditFindingRecord(analysis_id=analysis.id, **finding.model_dump(exclude={"id"})))
-        db.commit()
-        db.refresh(analysis)
-        return self.get_analysis(db, UUID(analysis.id))
-
-    @staticmethod
-    def _deterministic_conflict_report(structured_note: StructuredOperativeNote) -> dict:
-        recommended_next_step = "Confirm final operative procedure before coding."
-        return {
-            "claim_readiness": "high_risk",
-            "claim_readiness_score": 0,
-            "claim_readiness_status": "High Risk",
-            "review_status": "High Risk",
-            "claim_readiness_explanation": (
-                "The procedure label and operative details describe different services. "
-                "Coding should not proceed until documentation is reconciled."
-            ),
-            "claim_readiness_reasons": [
-                "Procedure section and operative details point to different surgical families.",
-                "Human review is required before coding.",
-            ],
-            "recommended_action": recommended_next_step,
-            "recommended_next_step": recommended_next_step,
-            "main_issue": "Procedure documentation conflict",
-            "detected_procedure": "Conflicting procedure documentation",
-            "coding_recommendation": "Coder review needed",
-            "suggested_code": None,
-            "total_estimated_reimbursement": 0,
-            "procedure_count": 0,
-            "audit_issue_count": 1,
-            "coding_summary": [],
-            "structured_note": structured_note.model_dump(),
-            "analysis_mode": "Rules mode",
-            "ai_assist_status": "Standard review completed.",
-            "ai_provider": None,
-            "ai_model": None,
-            "ai_procedure_summary": None,
-            "ai_reasoning_summary": None,
-            "ai_documentation_gaps": [],
-            "ai_suggested_clarifications": [],
-            "ai_confidence_reasoning": [],
-            "ai_likely_procedure_family": None,
-            "ai_likely_cpt_category": None,
-            "ai_probable_operative_intent": None,
-            "ai_supporting_texts": [],
-            "ai_cpt_rationales": [],
-            "plain_english_review": (
-                "The procedure label and operative details describe different services. "
-                "Coding should not proceed until the documentation is reconciled."
-            ),
-        }
-
-    @classmethod
     def apply_final_guardrails(
         cls,
         note_text: str,
         analysis_result: dict,
         findings: list[AuditFinding] | None = None,
+        section_result: SectionConsistencyResult | None = None,
     ) -> bool:
-        validation = ReviewEngine.validate_section_consistency(note_text)
-        sections = ReviewEngine.extract_raw_sections(note_text)
-        procedure_families = ReviewEngine.deterministic_section_families(sections.get("procedure", ""))
-        technique_families = ReviewEngine.deterministic_section_families(sections.get("technique", ""))
-        explicit_combined = len(procedure_families) > 1
-
-        override_applied = bool(validation["has_conflict"])
+        section_result = section_result or analyze_section_consistency(note_text)
+        override_applied = section_result.procedure_conflict
 
         if override_applied:
-            cls._apply_procedure_conflict_result(analysis_result, validation)
             if findings is not None and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
                 findings.append(ReviewEngine.conflict_finding("Confirm final operative procedure before coding."))
+            cls._apply_procedure_conflict_result(analysis_result, section_result, findings)
 
         log_event(
             logger,
             logging.INFO,
-            "final_guardrail.procedure_conflict",
-            procedure_families=cls._family_values(procedure_families),
-            technique_families=cls._family_values(technique_families),
-            explicit_combined=explicit_combined,
-            override_applied=override_applied,
+            "section_consistency.final_guardrail",
+            procedure_text=section_result.procedure_text,
+            technique_text=section_result.technique_text,
+            findings_text=section_result.findings_text,
+            diagnosis_text=section_result.diagnosis_text,
+            procedure_families=section_result.procedure_families,
+            findings_families=section_result.findings_families,
+            technique_families=section_result.technique_families,
+            diagnosis_families=section_result.diagnosis_families,
+            explicit_combined=section_result.explicit_combined,
+            procedure_conflict=section_result.procedure_conflict,
+            conflict_reason=section_result.conflict_reason,
+            final_review_status=analysis_result.get("claim_readiness_status") or analysis_result.get("review_status"),
+            final_main_issue=analysis_result.get("main_issue"),
         )
         return override_applied
 
     @staticmethod
-    def _apply_procedure_conflict_result(analysis_result: dict, validation: dict) -> None:
-        recommended_next_step = validation["recommended_next_step"]
-        analysis_result["claim_readiness_status"] = validation["review_status"]
-        analysis_result["review_status"] = validation["review_status"]
+    def _apply_procedure_conflict_result(
+        analysis_result: dict,
+        section_result: SectionConsistencyResult,
+        findings: list[AuditFinding] | None = None,
+    ) -> None:
+        override = section_result.review_override()
+        recommended_next_step = str(override["recommended_next_step"])
+        analysis_result["claim_readiness_status"] = override["review_status"]
+        analysis_result["review_status"] = override["review_status"]
         analysis_result["claim_readiness"] = "high_risk"
         analysis_result["claim_readiness_score"] = 0
-        analysis_result["main_issue"] = validation["main_issue"]
-        analysis_result["detected_procedure"] = validation["detected_procedure"]
+        analysis_result["claim_readiness_explanation"] = (
+            "The procedure label and operative details describe different services. "
+            "Coding should not proceed until the documentation is reconciled."
+        )
+        analysis_result["claim_readiness_reasons"] = [
+            "Procedure section and operative details point to different surgical families.",
+            "Human review is required before coding.",
+        ]
+        analysis_result["main_issue"] = override["main_issue"]
+        analysis_result["detected_procedure"] = override["detected_procedure"]
         analysis_result["recommended_action"] = recommended_next_step
         analysis_result["recommended_next_step"] = recommended_next_step
-        analysis_result["coding_recommendation"] = validation["coding_recommendation"]
-        analysis_result["suggested_code"] = validation["suggested_code"]
+        analysis_result["coding_recommendation"] = override["coding_recommendation"]
+        analysis_result["suggested_code"] = override["suggested_code"]
         analysis_result["total_estimated_reimbursement"] = 0
+        analysis_result["procedure_count"] = 0
+        analysis_result["audit_issue_count"] = len([finding for finding in findings or [] if finding.severity in {"high", "medium"}])
         analysis_result["coding_summary"] = []
         analysis_result["plain_english_review"] = (
             "The procedure label and operative details describe different services. "
@@ -402,6 +304,7 @@ class AnalysisService:
             status=analysis.status,
             analysis_mode=analysis.report.get("analysis_mode", "Rules mode"),
             structured_note=analysis.report.get("structured_note"),
+            debug_section_analysis=analysis.report.get("debug_section_analysis"),
             extracted_procedures=[
                 {
                     "id": UUID(row.id),

@@ -173,6 +173,8 @@ def test_submit_note_and_get_analysis(client):
     assert created["total_estimated_reimbursement"] > 0
     assert created["report"]["analysis_mode"] == "Rules mode"
     assert created["analysis_mode"] == "Rules mode"
+    assert created["debug_section_analysis"] is not None
+    assert "procedure_text" in created["debug_section_analysis"]
 
     get_response = client.get(f"/api/analyses/{created['id']}")
     assert get_response.status_code == 200
@@ -220,7 +222,7 @@ def test_missing_laterality_is_needs_review_not_high_risk(client):
     assert body["report"]["recommended_action"] == "Clarify left or right side before review."
 
 
-def test_sectioned_hernia_missing_laterality_is_needs_review(client):
+def test_missing_laterality_hernia_needs_review(client):
     note = """Procedure: Open inguinal hernia repair with mesh.
 
 Indication: Synthetic patient with symptomatic inguinal hernia.
@@ -258,7 +260,7 @@ def test_appendectomy_ready_without_laterality_finding(client):
     assert not any(finding["category"] == "missing_laterality" for finding in body["audit_findings"])
 
 
-def test_sectioned_normal_appendectomy_is_ready(client):
+def test_normal_appendectomy_ready(client):
     note = """Procedure: Laparoscopic appendectomy.
 Indication: Synthetic patient with acute appendicitis.
 Findings: Inflamed appendix without perforation.
@@ -291,7 +293,7 @@ Postoperative diagnosis: Acute appendicitis."""
     assert body["report"]["suggested_code"] is None
     assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
     conflict = next(finding for finding in body["audit_findings"] if finding["category"] == "procedure_documentation_conflict")
-    assert conflict["documentation_improvement"] == "Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service."
+    assert conflict["documentation_improvement"] == "Clarify whether the procedure, findings, technique, and postoperative diagnosis describe the same service."
 
 
 def test_headerAppendix_techniqueGallbladder_shouldConflict(client):
@@ -310,7 +312,7 @@ Postoperative diagnosis: Acute appendicitis."""
     assert body["report"]["suggested_code"] is None
 
 
-def test_appendectomy_procedure_with_gallbladder_technique_is_high_risk(client):
+def test_section_conflict_appendectomy_header_gallbladder_technique(client):
     note = """Procedure: Laparoscopic appendectomy.
 Technique: Gallbladder was dissected from the liver bed and removed.
 Postoperative diagnosis: Acute appendicitis."""
@@ -465,6 +467,33 @@ Postoperative diagnosis: Acute appendicitis"""
     }
 
 
+def test_api_response_exposes_top_level_debug_section_analysis(client):
+    note = """Procedure: Laparoscopic appendectomy
+
+Findings: Gallstones with inflamed gallbladder
+
+Technique: Gallbladder was dissected from the liver bed and removed
+
+Postoperative diagnosis: Acute appendicitis"""
+
+    response = client.post("/api/notes", json={"title": "Debug conflict note", "note_text": note})
+    assert response.status_code == 201
+    body = response.json()
+
+    assert body["debug_section_analysis"] == {
+        "procedure_text": "Laparoscopic appendectomy",
+        "findings_text": "Gallstones with inflamed gallbladder",
+        "technique_text": "Gallbladder was dissected from the liver bed and removed",
+        "diagnosis_text": "Acute appendicitis",
+        "procedure_families": ["appendectomy"],
+        "findings_families": ["cholecystectomy"],
+        "technique_families": ["cholecystectomy"],
+        "diagnosis_families": ["appendectomy"],
+        "explicit_combined": False,
+        "conflict_detected": True,
+    }
+
+
 def test_section_consistency_validator_allows_explicit_combined_procedure():
     note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
 Technique: The appendix was divided at the base with a stapler and removed. The cystic duct and cystic artery were clipped and divided, and the gallbladder was removed.
@@ -487,7 +516,7 @@ def test_unrelated_procedure_families_without_section_conflict_is_not_auto_high_
     assert not any(finding["category"] == "procedure_documentation_conflict" for finding in body["audit_findings"])
 
 
-def test_explicitCombinedProcedure_shouldPass(client):
+def test_explicit_combined_appendectomy_cholecystectomy_not_conflict(client):
     note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
 Findings: Inflamed appendix and inflamed gallbladder with gallstones.
 Technique: The appendix was divided at the base with a stapler and removed. The cystic duct and cystic artery were clipped and divided, and the gallbladder was removed.
@@ -516,7 +545,7 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["recommended_action"] == "Confirm final operative procedure before coding."
 
 
-def test_headerGallbladder_techniqueAppendix_shouldConflict(client):
+def test_section_conflict_cholecystectomy_header_appendix_technique(client):
     note = """Procedure: Laparoscopic cholecystectomy.
 Findings: Inflamed appendix in the right lower quadrant.
 Technique: The appendix was divided at the base with a stapler and removed in a retrieval bag.
@@ -530,7 +559,7 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
 
 
-def test_cholecystectomy_possible_cholangiogram_remains_high_risk(client):
+def test_cholecystectomy_possible_cholangiogram_high_risk(client):
     note = """Procedure: Laparoscopic cholecystectomy, possible cholangiogram.
 Indication: Synthetic patient with symptomatic gallstones.
 Findings: Inflamed gallbladder.
@@ -636,6 +665,16 @@ def test_identifier_in_note_title_is_rejected(client):
     note = "Procedure: Laparoscopic appendectomy. Operative note: Appendix was removed laparoscopically without complication."
 
     response = client.post("/api/notes", json={"title": "Patient Name: Jane Smith", "note_text": note})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "Potential patient identifiers detected. Please remove identifiers before analysis."
+    assert client.get("/api/analyses").json() == []
+
+
+def test_phi_block_no_analysis(client):
+    note = "Patient Name: John Smith. MRN: 123456. DOB: 01/02/1980. Procedure: Laparoscopic appendectomy."
+
+    response = client.post("/api/notes", json={"title": "PHI blocked note", "note_text": note})
 
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "Potential patient identifiers detected. Please remove identifiers before analysis."

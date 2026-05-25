@@ -5,6 +5,7 @@ from enum import StrEnum
 
 from app.logging_utils import log_event
 from app.models.schemas import AuditFinding, CPTCodeCandidate, StructuredOperativeNote
+from app.services.section_consistency import analyze_section_consistency, extract_section_texts, matched_families
 
 
 logger = logging.getLogger(__name__)
@@ -129,20 +130,19 @@ class ReviewEngine:
 
     @classmethod
     def validate_section_consistency(cls, note_text: str) -> dict:
-        debug = cls.debug_section_analysis(note_text)
-        has_conflict = debug["conflict_detected"]
+        result = analyze_section_consistency(note_text)
         log_event(
             logger,
             logging.INFO,
             "section_consistency.validation",
-            procedure_families=debug["procedure_families"],
-            findings_families=debug["findings_families"],
-            technique_families=debug["technique_families"],
-            diagnosis_families=debug["diagnosis_families"],
-            explicit_combined=debug["explicit_combined"],
-            has_conflict=has_conflict,
+            procedure_families=result.procedure_families,
+            findings_families=result.findings_families,
+            technique_families=result.technique_families,
+            diagnosis_families=result.diagnosis_families,
+            explicit_combined=result.explicit_combined,
+            has_conflict=result.procedure_conflict,
         )
-        if not has_conflict:
+        if not result.procedure_conflict:
             return {
                 "has_conflict": False,
                 "review_status": None,
@@ -152,57 +152,22 @@ class ReviewEngine:
                 "coding_recommendation": None,
                 "suggested_code": None,
             }
-        return {
-            "has_conflict": True,
-            "review_status": "High Risk",
-            "main_issue": "Procedure documentation conflict",
-            "detected_procedure": "Conflicting procedure documentation",
-            "recommended_next_step": "Confirm final operative procedure before coding.",
-            "coding_recommendation": "Coder review needed",
-            "suggested_code": None,
-        }
+        return {"has_conflict": True, **result.review_override()}
 
     @classmethod
     def debug_section_analysis(cls, note_text: str) -> dict:
-        sections = cls.extract_raw_sections(note_text)
-        procedure_families = cls.deterministic_section_families(sections.get("procedure", ""))
-        findings_families = cls.deterministic_section_families(sections.get("findings", ""))
-        technique_families = cls.deterministic_section_families(sections.get("technique", ""))
-        postop_families = cls.deterministic_section_families(sections.get("postoperative_diagnosis", ""))
-        if "appendicitis" in sections.get("postoperative_diagnosis", "").lower():
-            postop_families.add(ProcedureFamily.APPENDECTOMY)
-        explicit_combined = len(procedure_families) > 1
-        has_conflict = (
-            not explicit_combined
-            and len(procedure_families) == 1
-            and len(technique_families) == 1
-            and next(iter(procedure_families)) != next(iter(technique_families))
-        )
-        return {
-            "procedure_text": sections.get("procedure", ""),
-            "technique_text": sections.get("technique", ""),
-            "findings_text": sections.get("findings", ""),
-            "diagnosis_text": sections.get("postoperative_diagnosis", ""),
-            "procedure_families": cls._debug_family_values(procedure_families),
-            "technique_families": cls._debug_family_values(technique_families),
-            "findings_families": cls._debug_family_values(findings_families),
-            "diagnosis_families": cls._debug_family_values(postop_families),
-            "explicit_combined": explicit_combined,
-            "conflict_detected": has_conflict,
-        }
+        return analyze_section_consistency(note_text).debug_payload()
 
     @classmethod
     def extract_raw_sections(cls, note_text: str) -> dict[str, str]:
-        matches = list(cls.RAW_SECTION_PATTERN.finditer(note_text))
-        sections: dict[str, str] = {}
-        for index, match in enumerate(matches):
-            raw_label = re.sub(r"\s+", " ", match.group(1).strip().lower())
-            label = cls.RAW_SECTION_NAMES.get(raw_label)
-            if not label:
-                continue
-            end = matches[index + 1].start() if index + 1 < len(matches) else len(note_text)
-            sections[label] = note_text[match.end() : end].strip()
-        return sections
+        sections = extract_section_texts(note_text)
+        return {
+            "procedure": sections["procedure"],
+            "findings": sections["findings"],
+            "technique": sections["technique"],
+            "postoperative_diagnosis": sections["postoperative_diagnosis"],
+            "complications": sections["complications"],
+        }
 
     @classmethod
     def deterministic_section_family(cls, section_text: str) -> ProcedureFamily | None:
@@ -213,11 +178,10 @@ class ReviewEngine:
 
     @classmethod
     def deterministic_section_families(cls, section_text: str) -> set[ProcedureFamily]:
-        lowered = section_text.lower()
         return {
             family
-            for family in cls.DETERMINISTIC_CONFLICT_FAMILIES
-            if any(keyword in lowered for keyword in cls.FAMILY_KEYWORDS[family])
+            for family_name in matched_families(section_text)
+            if (family := cls._debug_family_to_enum(family_name))
         }
 
     @classmethod
@@ -293,8 +257,8 @@ class ReviewEngine:
         structured_note: StructuredOperativeNote,
         candidates: list[CPTCodeCandidate] | None = None,
     ) -> AuditFinding | None:
-        classification = cls.classify(structured_note, candidates)
-        if not classification.procedure_conflict:
+        result = analyze_section_consistency(structured_note.raw_text)
+        if not result.procedure_conflict:
             return None
         return cls.conflict_finding("Confirm final operative procedure before coding.")
 
@@ -379,6 +343,17 @@ class ReviewEngine:
         return sorted(cls.DEBUG_FAMILY_LABELS.get(family, family.value.lower()) for family in families)
 
     @staticmethod
+    def _debug_family_to_enum(family_name: str) -> ProcedureFamily | None:
+        mapping = {
+            "appendectomy": ProcedureFamily.APPENDECTOMY,
+            "cholecystectomy": ProcedureFamily.CHOLECYSTECTOMY,
+            "hernia": ProcedureFamily.HERNIA_REPAIR,
+            "bowel_resection": ProcedureFamily.BOWEL_RESECTION,
+            "av_fistula": ProcedureFamily.AV_FISTULA,
+        }
+        return mapping.get(family_name)
+
+    @staticmethod
     def _terms_linked(text: str, left_term: str, right_term: str) -> bool:
         left_position = text.find(left_term)
         if left_position == -1:
@@ -400,7 +375,7 @@ class ReviewEngine:
             explanation="The procedure label and operative details describe different services.",
             recommendation=recommendation,
             suggested_action=recommendation,
-            documentation_improvement="Clarify whether the documented procedure, findings, and postoperative diagnosis refer to the same service.",
-            why_it_matters="Coding should not proceed until contradictory operative documentation is reconciled.",
+            documentation_improvement="Clarify whether the procedure, findings, technique, and postoperative diagnosis describe the same service.",
+            why_it_matters="Conflicting operative documentation can lead to incorrect code selection, denials, or billing compliance risk.",
             evidence_used=[],
         )

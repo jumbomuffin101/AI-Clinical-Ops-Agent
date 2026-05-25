@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     max_request_bytes: int = 262144
     project_root: Path = Path(__file__).resolve().parents[3]
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property
     def reference_docs_path(self) -> Path:

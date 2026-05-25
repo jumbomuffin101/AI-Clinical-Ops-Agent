@@ -128,12 +128,26 @@ class ReimbursementEstimate(BaseModel):
     source: str
 
 
+class DebugSectionAnalysis(BaseModel):
+    procedure_text: str = ""
+    findings_text: str = ""
+    technique_text: str = ""
+    diagnosis_text: str = ""
+    procedure_families: list[str] = Field(default_factory=list)
+    findings_families: list[str] = Field(default_factory=list)
+    technique_families: list[str] = Field(default_factory=list)
+    diagnosis_families: list[str] = Field(default_factory=list)
+    explicit_combined: bool = False
+    conflict_detected: bool = False
+
+
 class AnalysisReport(BaseModel):
     id: UUID
     note_id: UUID
     status: str
     analysis_mode: str | None = None
     structured_note: StructuredOperativeNote | None = None
+    debug_section_analysis: DebugSectionAnalysis | None = None
     extracted_procedures: list[ExtractedProcedure]
     cpt_candidates: list[CPTCodeCandidate]
     audit_findings: list[AuditFinding]

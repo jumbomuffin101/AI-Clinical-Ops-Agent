@@ -2,6 +2,7 @@ node_modules/
 .next/
 .env
 .venv/
+apps/api/.codex-venv/
 __pycache__/
 .pytest_cache/
 pytest-cache-files-*/
