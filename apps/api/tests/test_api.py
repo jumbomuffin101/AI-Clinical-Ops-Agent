@@ -557,6 +557,7 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
+    assert body["report"]["debug_backend_version"] == "guardrail-runtime-check-v1"
 
 
 def test_cholecystectomy_possible_cholangiogram_high_risk(client):

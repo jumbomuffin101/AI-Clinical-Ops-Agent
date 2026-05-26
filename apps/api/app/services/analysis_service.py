@@ -2,6 +2,7 @@ import hashlib
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 AI_CACHE_TTL_SECONDS = 600
 AI_RESPONSE_CACHE: dict[str, tuple[float, AIStructuredOperativeNote]] = {}
 PHI_REJECTION_MESSAGE = "Potential patient identifiers detected. Please remove identifiers before analysis."
+BACKEND_RUNTIME_MARKER_VERSION = "guardrail-runtime-check-v1"
 
 
 class AnalysisService:
@@ -102,6 +104,9 @@ class AnalysisService:
         report["ai_probable_operative_intent"] = ai_analysis.probable_operative_intent if ai_analysis else None
         report["ai_supporting_texts"] = self._ai_supporting_texts(ai_analysis)
         report["ai_cpt_rationales"] = self._ai_cpt_rationales(ai_analysis) or self._validated_cpt_rationales(ai_analysis, candidates)
+        report["debug_backend_version"] = BACKEND_RUNTIME_MARKER_VERSION
+        report["debug_analysis_created_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info({"event": "BACKEND_RUNTIME_MARKER", "version": BACKEND_RUNTIME_MARKER_VERSION})
         if self.apply_final_guardrails(payload.note_text, report, findings, section_result):
             procedures = []
             candidates = []
@@ -109,6 +114,15 @@ class AnalysisService:
             summary = "Detected procedure documentation conflict before coding analysis."
         report["debug_section_analysis"] = debug_section_analysis
         self._log_review_classification(classification, report)
+        logger.info(
+            {
+                "event": "FINAL_RESPONSE_BEFORE_RETURN",
+                "review_status": report.get("review_status") or report.get("claim_readiness_status"),
+                "main_issue": report.get("main_issue"),
+                "detected_procedure": report.get("detected_procedure"),
+                "debug_backend_version": report.get("debug_backend_version"),
+            }
+        )
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -203,12 +217,28 @@ class AnalysisService:
         section_result: SectionConsistencyResult | None = None,
     ) -> bool:
         section_result = section_result or analyze_section_consistency(note_text)
+        logger.info(
+            {
+                "event": "FINAL_GUARDRAIL_RUNTIME_CHECK",
+                "procedure_conflict": section_result.procedure_conflict,
+                "conflict_reason": section_result.conflict_reason,
+                "review_status_before": analysis_result.get("review_status") or analysis_result.get("claim_readiness_status"),
+                "main_issue_before": analysis_result.get("main_issue"),
+            }
+        )
         override_applied = section_result.procedure_conflict
 
         if override_applied:
             if findings is not None and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
                 findings.append(ReviewEngine.conflict_finding("Confirm final operative procedure before coding."))
             cls._apply_procedure_conflict_result(analysis_result, section_result, findings)
+            logger.info(
+                {
+                    "event": "FINAL_GUARDRAIL_OVERRIDE_APPLIED",
+                    "review_status_after": "High Risk",
+                    "main_issue_after": "Procedure documentation conflict",
+                }
+            )
 
         log_event(
             logger,
