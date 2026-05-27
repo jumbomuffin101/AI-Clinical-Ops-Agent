@@ -265,6 +265,7 @@ Operative note: Four ports were placed and the gallbladder was dissected from th
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const selectorExamples = examples.filter((example) => ["av-fistula", "hernia-risk", "bundled-risk", "custom-note"].includes(example.id));
+const SHOW_ADVANCED_DIAGNOSTICS = false;
 
 export default function Home() {
   const [selectedExample, setSelectedExample] = useState(examples[0].id);
@@ -278,8 +279,6 @@ export default function Home() {
   const [evaluationLoading, setEvaluationLoading] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showEvaluation, setShowEvaluation] = useState(false);
   const [showRevisionHistory, setShowRevisionHistory] = useState(false);
   const [showParsedStructure, setShowParsedStructure] = useState(false);
   const [showBillingDetails, setShowBillingDetails] = useState(false);
@@ -291,8 +290,10 @@ export default function Home() {
   const visibleReport = identifierWarning ? null : report;
 
   useEffect(() => {
-    void loadHistory();
-    void loadEvaluation();
+    if (SHOW_ADVANCED_DIAGNOSTICS) {
+      void loadHistory();
+      void loadEvaluation();
+    }
   }, []);
 
   useEffect(() => {
@@ -404,7 +405,7 @@ export default function Home() {
       } else {
         setRevisionImpact(null);
       }
-      await loadHistory();
+      if (SHOW_ADVANCED_DIAGNOSTICS) await loadHistory();
     } catch {
       setError("Unable to complete review. Please try again.");
     } finally {
@@ -465,20 +466,19 @@ export default function Home() {
               onLoadAnalysis={loadAnalysis}
               sections={{
                 parsed: showParsedStructure,
-                history: showHistory,
-                evaluation: showEvaluation,
                 revision: showRevisionHistory,
               }}
               onToggleSection={(section) => {
                 if (section === "parsed") setShowParsedStructure((value) => !value);
-                if (section === "history") setShowHistory((value) => !value);
-                if (section === "evaluation") setShowEvaluation((value) => !value);
                 if (section === "revision") setShowRevisionHistory((value) => !value);
               }}
             />
           </Disclosure>
         </div> : null}
       </section>
+      <footer className="mx-auto mt-4 border-t border-[#dce9e7] px-5 py-8 text-center text-xs font-medium tracking-[0.04em] text-[#71817d]">
+        Created by Aryan Rawat
+      </footer>
     </main>
   );
 }
@@ -724,7 +724,6 @@ function ImpactList({ title, items, empty, success = false }: { title: string; i
 }
 
 function ResultSummary({ report, loading }: { report: AnalysisReport | null; loading: boolean }) {
-  const reviewItems = (report?.audit_findings ?? []).filter((finding) => finding.severity !== "info");
   const status = report ? displayReviewStatus(report) : loading ? "Running" : "Not run";
   const summaryStyles = getStatusStyles(status);
   return (
@@ -809,10 +808,7 @@ function CptCandidates({ report }: { report: AnalysisReport | null }) {
           </div>
         ) : (
           <div className="rounded-xl border border-[#ead8c0] bg-[#fbf2e6] p-4">
-            <p className="font-semibold text-[#7a5428]">Coding recommendation: Coder review needed</p>
-            <p className="mt-2 text-sm leading-6 text-[#776653]">
-              The system identified the procedure, but coder confirmation is needed before selecting a CPT.
-            </p>
+            <p className="font-semibold text-[#7a5428]">Coder review is recommended before selecting a CPT code.</p>
           </div>
         )
       ) : (
@@ -844,14 +840,14 @@ function MoreDetails({
   revisionHistory: RevisionHistoryItem[];
   reviewMetadata: Array<{ label: string; value: string }> | null;
   onLoadAnalysis: (id: string) => void;
-  sections: { parsed: boolean; history: boolean; evaluation: boolean; revision: boolean };
-  onToggleSection: (section: "parsed" | "history" | "evaluation" | "revision") => void;
+  sections: { parsed: boolean; revision: boolean };
+  onToggleSection: (section: "parsed" | "revision") => void;
 }) {
   const [openSections, setOpenSections] = useState({
     ai: false,
     coding: false,
     risks: false,
-    metadata: false,
+    advanced: false,
   });
   const toggleLocalSection = (section: keyof typeof openSections) => {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
@@ -859,40 +855,40 @@ function MoreDetails({
 
   return (
     <div className="space-y-3">
-      <DetailAccordion title="AI interpretation details" open={openSections.ai} onToggle={() => toggleLocalSection("ai")}>
+      <DetailAccordion title="AI Interpretation" open={openSections.ai} onToggle={() => toggleLocalSection("ai")}>
         <AIReviewInsights report={report} />
       </DetailAccordion>
 
-      <DetailAccordion title="Coding recommendation details" open={openSections.coding} onToggle={() => toggleLocalSection("coding")}>
+      <DetailAccordion title="Coding Recommendation Details" open={openSections.coding} onToggle={() => toggleLocalSection("coding")}>
         <CptCandidates report={report} />
       </DetailAccordion>
 
-      <DetailAccordion title="Billing risks" open={openSections.risks} onToggle={() => toggleLocalSection("risks")}>
+      <DetailAccordion title="Billing Risks" open={openSections.risks} onToggle={() => toggleLocalSection("risks")}>
         <AuditFindings report={report} />
       </DetailAccordion>
 
-      <DetailAccordion title="Parsed note structure" open={sections.parsed} onToggle={() => onToggleSection("parsed")}>
+      <DetailAccordion title="Parsed Note Structure" open={sections.parsed} onToggle={() => onToggleSection("parsed")}>
         <ParsedNoteStructure report={report} />
       </DetailAccordion>
 
-      <DetailAccordion title="Recent reviews" open={sections.history} onToggle={() => onToggleSection("history")}>
-        <RecentAnalyses history={history} loading={historyLoading} onLoad={onLoadAnalysis} />
-      </DetailAccordion>
-
-      <DetailAccordion title="System evaluation" open={sections.evaluation} onToggle={() => onToggleSection("evaluation")}>
-        <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
-      </DetailAccordion>
-
-      <DetailAccordion title="Revision history" open={sections.revision} onToggle={() => onToggleSection("revision")}>
+      <DetailAccordion title="Revision History" open={sections.revision} onToggle={() => onToggleSection("revision")}>
         {revisionImpact ? <RevisionImpactCard impact={revisionImpact} /> : null}
         <div className={revisionImpact ? "mt-4" : undefined}>
           <RevisionHistoryPanel items={revisionHistory} />
         </div>
       </DetailAccordion>
 
-      <DetailAccordion title="Technical analysis metadata" open={openSections.metadata} onToggle={() => toggleLocalSection("metadata")}>
-        <TechnicalMetadata rows={reviewMetadata} />
-      </DetailAccordion>
+      {SHOW_ADVANCED_DIAGNOSTICS ? (
+        <DetailAccordion title="Advanced Diagnostics" open={openSections.advanced} onToggle={() => toggleLocalSection("advanced")}>
+          <div className="space-y-4">
+            <RecentAnalyses history={history} loading={historyLoading} onLoad={onLoadAnalysis} />
+            <SystemEvaluation evaluation={evaluation} loading={evaluationLoading} />
+            <SectionCard title="Technical Analysis Metadata" explainer="Internal run information for local troubleshooting only.">
+              <TechnicalMetadata rows={reviewMetadata} />
+            </SectionCard>
+          </div>
+        </DetailAccordion>
+      ) : null}
     </div>
   );
 }
@@ -1011,26 +1007,31 @@ function SystemEvaluation({ evaluation, loading }: { evaluation: EvaluationSumma
 }
 
 function AuditFindings({ report }: { report: AnalysisReport | null }) {
+  const findings = (report?.audit_findings ?? []).filter((finding) => finding.category !== "clean_claim" && finding.severity !== "info");
   return (
     <SectionCard title="Billing Risks" explainer="Documentation or billing concerns that should be reviewed before submission.">
       {report ? (
-        <div className="space-y-3">
-          {report.audit_findings.map((finding, index) => (
-            <div key={`${finding.category}-${index}`} className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold text-[#34464a]">{finding.title ?? findingTitle(finding.category)}</p>
-                  <p className="mt-1 text-sm leading-6 text-[#667774]">{finding.explanation ?? finding.message}</p>
+        findings.length ? (
+          <div className="space-y-3">
+            {findings.map((finding, index) => (
+              <div key={`${finding.category}-${index}`} className="rounded-xl border border-[#e4ddd2] bg-[#fffaf4] p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-[#34464a]">{finding.title ?? findingTitle(finding.category)}</p>
+                    <p className="mt-1 text-sm leading-6 text-[#667774]">{finding.explanation ?? finding.message}</p>
+                  </div>
+                  <StatusBadge status={finding.severity === "high" ? "High Risk" : finding.severity === "medium" ? "Needs Review" : "Ready"} />
                 </div>
-                <StatusBadge status={finding.severity === "high" ? "High Risk" : finding.severity === "medium" ? "Needs Review" : "Ready"} />
+                <div className="mt-3 rounded-lg bg-[#fffdfa] px-3 py-2 text-sm">
+                  <span className="font-semibold text-[#34464a]">Recommended action: </span>
+                  <span className="text-[#586b69]">{finding.suggested_action ?? finding.recommendation}</span>
+                </div>
               </div>
-              <div className="mt-3 rounded-lg bg-[#fffdfa] px-3 py-2 text-sm">
-                <span className="font-semibold text-[#34464a]">Recommended action: </span>
-                <span className="text-[#586b69]">{finding.suggested_action ?? finding.recommendation}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <FriendlyEmpty title="No billing risks were identified for this review." text="No reviewer action is required based on the current billing-risk checks." />
+        )
       ) : (
         <FriendlyEmpty title="No review risks yet." text="After analysis, missing details, ambiguity, or clinical operations review concerns will be listed here." />
       )}
@@ -1138,10 +1139,15 @@ function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
 
   const usedAI = isAiAssisted(report);
   if (!usedAI) {
+    const providerError = report.report.ai_assist_status?.toLowerCase().includes("unavailable");
     return (
       <section className="rounded-2xl border border-[#dce9e7] bg-white/78 p-5 shadow-[0_12px_30px_rgba(49,84,91,0.045)]">
         <h2 className="text-lg font-semibold text-[#17343c]">AI Interpretation</h2>
-        <p className="mt-2 text-sm leading-6 text-[#607678]">Rules-based review completed. AI interpretation was not needed or unavailable.</p>
+        <p className="mt-2 text-sm leading-6 text-[#607678]">
+          {providerError
+            ? "AI interpretation was unavailable for this review. The deterministic review result remains available."
+            : "AI was not required for this review. The note matched a deterministic review pattern."}
+        </p>
       </section>
     );
   }
@@ -1150,18 +1156,28 @@ function AIReviewInsights({ report }: { report: AnalysisReport | null }) {
     <SectionCard title="AI Interpretation" explainer="Draft interpretation of the operative note. Deterministic checks still control risks, supported codes, and review status.">
       <div className="grid gap-4 lg:grid-cols-2">
         <InsightBlock
-          title="Procedure family"
-          body={report.report.ai_procedure_summary ?? "No procedure summary returned."}
+          title="AI interpretation summary"
+          body={report.report.ai_procedure_summary ?? report.report.ai_reasoning_summary ?? "No interpretation summary returned."}
           details={[
-            report.report.ai_likely_procedure_family ?? null,
-            report.structured_note?.detected_anatomy ? `Anatomy: ${report.structured_note.detected_anatomy}` : null,
-            report.structured_note?.detected_laterality ? `Laterality: ${report.structured_note.detected_laterality}` : "Laterality: not documented",
-            report.report.ai_probable_operative_intent ? `Intent: ${report.report.ai_probable_operative_intent}` : null,
+            report.report.ai_reasoning_summary ?? null,
           ]}
         />
-        <InsightBlock title="Procedures detected" body="Procedures or operative actions the AI layer pulled from the note." details={detectedProcedureItems(report)} />
-        <InsightBlock title="Documentation gaps" body="Details a reviewer may need before selecting or submitting a code." details={report.report.ai_documentation_gaps ?? []} />
-        <InsightBlock title="Suggested clarification questions" body="Questions to ask before relying on the note for clinical operations review." details={report.report.ai_suggested_clarifications ?? []} />
+        {report.report.ai_likely_procedure_family || report.report.ai_likely_cpt_category ? (
+          <InsightBlock
+            title="Procedure classification"
+            body="AI-supported classification for reviewer context."
+            details={[
+              report.report.ai_likely_procedure_family ? `Procedure family: ${report.report.ai_likely_procedure_family}` : null,
+              report.report.ai_likely_cpt_category ? `CPT category: ${report.report.ai_likely_cpt_category}` : null,
+            ]}
+          />
+        ) : null}
+        {(report.report.ai_supporting_texts ?? []).length ? (
+          <InsightBlock title="Supporting evidence" body="Relevant operative note evidence supporting the interpretation." details={report.report.ai_supporting_texts ?? []} />
+        ) : null}
+        {(report.report.ai_suggested_clarifications ?? []).length ? (
+          <InsightBlock title="Suggested clarifications" body="Questions to resolve before relying on the review for coding." details={report.report.ai_suggested_clarifications ?? []} />
+        ) : null}
       </div>
     </SectionCard>
   );
@@ -1394,19 +1410,6 @@ function reviewMetadata(report: AnalysisReport) {
 
 function detectedProcedureLabel(report: AnalysisReport) {
   return report.report.detected_procedure ?? "Procedure not reported";
-}
-
-function detectedProcedureItems(report: AnalysisReport) {
-  const aiSummary = report.report.ai_procedure_summary ? [cleanProcedureSummary(report.report.ai_procedure_summary)] : [];
-  const procedureNames = report.extracted_procedures
-    .map((procedure) => procedure.name)
-    .filter((name) => name !== "Unclassified operative procedure" && !aiSummary.some((summary) => summary.toLowerCase().includes(name.toLowerCase())));
-  const supportingText = report.report.ai_supporting_texts ?? [];
-  return [...aiSummary, ...procedureNames, ...supportingText].slice(0, 6);
-}
-
-function cleanProcedureSummary(value: string) {
-  return value.replace(/^AI identified:\s*/i, "").trim();
 }
 
 function aiReviewText(report: AnalysisReport) {
