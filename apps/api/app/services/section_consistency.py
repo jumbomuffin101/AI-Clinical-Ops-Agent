@@ -26,21 +26,6 @@ class SectionConsistencyResult(BaseModel):
             "suggested_code": None,
         }
 
-    def debug_payload(self) -> dict:
-        return {
-            "procedure_text": self.procedure_text,
-            "findings_text": self.findings_text,
-            "technique_text": self.technique_text,
-            "diagnosis_text": self.diagnosis_text,
-            "procedure_families": self.procedure_families,
-            "findings_families": self.findings_families,
-            "technique_families": self.technique_families,
-            "diagnosis_families": self.diagnosis_families,
-            "explicit_combined": self.explicit_combined,
-            "conflict_detected": self.procedure_conflict,
-        }
-
-
 _FAMILY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "appendectomy": (
         "appendectomy",

@@ -173,8 +173,10 @@ def test_submit_note_and_get_analysis(client):
     assert created["total_estimated_reimbursement"] > 0
     assert created["report"]["analysis_mode"] == "Rules mode"
     assert created["analysis_mode"] == "Rules mode"
-    assert created["debug_section_analysis"] is not None
-    assert "procedure_text" in created["debug_section_analysis"]
+    assert "debug_section_analysis" not in created
+    assert "debug_section_analysis" not in created["report"]
+    assert "debug_backend_version" not in created["report"]
+    assert "debug_analysis_created_at" not in created["report"]
 
     get_response = client.get(f"/api/analyses/{created['id']}")
     assert get_response.status_code == 200
@@ -187,6 +189,9 @@ def test_submit_note_and_get_analysis(client):
     export_response = client.get(f"/api/analyses/{created['id']}/export")
     assert export_response.status_code == 200
     assert export_response.json()["claim_readiness"]["score"] is not None
+    assert "debug_section_analysis" not in export_response.json()["final_report"]
+    assert "debug_backend_version" not in export_response.json()["final_report"]
+    assert "debug_analysis_created_at" not in export_response.json()["final_report"]
     assert created["report"]["recommended_action"]
 
 
@@ -442,58 +447,6 @@ Postoperative diagnosis: Acute appendicitis."""
     }
 
 
-def test_debug_section_analysis_exposes_expected_intermediate_values():
-    note = """Procedure: Laparoscopic appendectomy
-
-Findings: Gallstones with inflamed gallbladder
-
-Technique: Gallbladder was dissected from the liver bed and removed
-
-Postoperative diagnosis: Acute appendicitis"""
-
-    debug = ReviewEngine.debug_section_analysis(note)
-
-    assert debug == {
-        "procedure_text": "Laparoscopic appendectomy",
-        "technique_text": "Gallbladder was dissected from the liver bed and removed",
-        "findings_text": "Gallstones with inflamed gallbladder",
-        "diagnosis_text": "Acute appendicitis",
-        "procedure_families": ["appendectomy"],
-        "technique_families": ["cholecystectomy"],
-        "findings_families": ["cholecystectomy"],
-        "diagnosis_families": ["appendectomy"],
-        "explicit_combined": False,
-        "conflict_detected": True,
-    }
-
-
-def test_api_response_exposes_top_level_debug_section_analysis(client):
-    note = """Procedure: Laparoscopic appendectomy
-
-Findings: Gallstones with inflamed gallbladder
-
-Technique: Gallbladder was dissected from the liver bed and removed
-
-Postoperative diagnosis: Acute appendicitis"""
-
-    response = client.post("/api/notes", json={"title": "Debug conflict note", "note_text": note})
-    assert response.status_code == 201
-    body = response.json()
-
-    assert body["debug_section_analysis"] == {
-        "procedure_text": "Laparoscopic appendectomy",
-        "findings_text": "Gallstones with inflamed gallbladder",
-        "technique_text": "Gallbladder was dissected from the liver bed and removed",
-        "diagnosis_text": "Acute appendicitis",
-        "procedure_families": ["appendectomy"],
-        "findings_families": ["cholecystectomy"],
-        "technique_families": ["cholecystectomy"],
-        "diagnosis_families": ["appendectomy"],
-        "explicit_combined": False,
-        "conflict_detected": True,
-    }
-
-
 def test_section_consistency_validator_allows_explicit_combined_procedure():
     note = """Procedure: Laparoscopic appendectomy and laparoscopic cholecystectomy.
 Technique: The appendix was divided at the base with a stapler and removed. The cystic duct and cystic artery were clipped and divided, and the gallbladder was removed.
@@ -557,7 +510,7 @@ Postoperative diagnosis: Cholelithiasis."""
     assert body["report"]["claim_readiness_status"] == "High Risk"
     assert body["report"]["main_issue"] == "Procedure documentation conflict"
     assert body["report"]["detected_procedure"] == "Conflicting procedure documentation"
-    assert body["report"]["debug_backend_version"] == "guardrail-runtime-check-v1"
+    assert "debug_backend_version" not in body["report"]
 
 
 def test_cholecystectomy_possible_cholangiogram_high_risk(client):

@@ -63,19 +63,6 @@ type StructuredOperativeNote = {
   structure_quality: string;
 };
 
-type DebugSectionAnalysis = {
-  procedure_text: string;
-  technique_text: string;
-  findings_text: string;
-  diagnosis_text: string;
-  procedure_families: string[];
-  technique_families: string[];
-  findings_families: string[];
-  diagnosis_families: string[];
-  explicit_combined: boolean;
-  conflict_detected: boolean;
-};
-
 type AnalysisReport = {
   id: string;
   summary: string;
@@ -85,7 +72,6 @@ type AnalysisReport = {
   audit_findings: AuditFinding[];
   reimbursement_estimates: ReimbursementEstimate[];
   total_estimated_reimbursement: number;
-  debug_section_analysis?: DebugSectionAnalysis | null;
   report: {
     review_status?: string;
     claim_readiness_score: number;
@@ -113,7 +99,6 @@ type AnalysisReport = {
     audit_issue_count: number;
     procedure_count: number;
     total_estimated_reimbursement: number;
-    debug_section_analysis?: DebugSectionAnalysis | null;
   };
 };
 
@@ -319,17 +304,6 @@ export default function Home() {
     setShowBillingDetails(false);
   }, [identifierWarning]);
 
-  useEffect(() => {
-    if (!visibleReport) return;
-    console.log("UI REPORT DEBUG", visibleReport.report);
-    const debugSectionAnalysis = debugSectionAnalysisForReport(visibleReport);
-    if (!debugSectionAnalysis) return;
-    console.log(
-      "[SECTION DEBUG]",
-      JSON.stringify(debugSectionAnalysis, null, 2)
-    );
-  }, [visibleReport]);
-
   function chooseExample(exampleId: string) {
     const example = examples.find((item) => item.id === exampleId) ?? examples[0];
     setSelectedExample(example.id);
@@ -471,7 +445,6 @@ export default function Home() {
               <>
                 <AnalysisStagePanel visible={analysisStarted || Boolean(visibleReport)} loading={loading} complete={Boolean(visibleReport)} />
                 <ResultSummary report={visibleReport} loading={loading} />
-                <DebugAnalysisPanel report={visibleReport} />
                 {hasSuggestedFixes(visibleReport) ? <ImprovementSuggestions report={visibleReport} /> : null}
               </>
             )}
@@ -801,24 +774,6 @@ function ResultSummary({ report, loading }: { report: AnalysisReport | null; loa
       )}
     </section>
   );
-}
-
-function DebugAnalysisPanel({ report }: { report: AnalysisReport | null }) {
-  const [open, setOpen] = useState(false);
-  const debugSectionAnalysis = debugSectionAnalysisForReport(report);
-  if (!debugSectionAnalysis) return null;
-
-  return (
-    <Disclosure title="Debug Analysis" open={open} onToggle={() => setOpen((value) => !value)}>
-      <pre className="max-h-96 overflow-auto rounded-xl border border-[#dce9e7] bg-[#0f2024] p-4 text-xs leading-5 text-[#d7ece8]">
-        {JSON.stringify(debugSectionAnalysis, null, 2)}
-      </pre>
-    </Disclosure>
-  );
-}
-
-function debugSectionAnalysisForReport(report: AnalysisReport | null) {
-  return report?.debug_section_analysis ?? report?.report.debug_section_analysis ?? null;
 }
 
 function CptCandidates({ report }: { report: AnalysisReport | null }) {

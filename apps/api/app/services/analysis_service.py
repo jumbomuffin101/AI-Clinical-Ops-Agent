@@ -2,7 +2,6 @@ import hashlib
 import logging
 import re
 import time
-from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -41,7 +40,11 @@ logger = logging.getLogger(__name__)
 AI_CACHE_TTL_SECONDS = 600
 AI_RESPONSE_CACHE: dict[str, tuple[float, AIStructuredOperativeNote]] = {}
 PHI_REJECTION_MESSAGE = "Potential patient identifiers detected. Please remove identifiers before analysis."
-BACKEND_RUNTIME_MARKER_VERSION = "guardrail-runtime-check-v1"
+NON_PUBLIC_REPORT_FIELDS = {
+    "debug_backend_version",
+    "debug_analysis_created_at",
+    "debug_section_analysis",
+}
 
 
 class AnalysisService:
@@ -63,7 +66,6 @@ class AnalysisService:
             raise ValueError(PHI_REJECTION_MESSAGE)
 
         section_result = analyze_section_consistency(payload.note_text)
-        debug_section_analysis = section_result.debug_payload()
 
         note = models.Note(title=payload.title, note_text=payload.note_text)
         db.add(note)
@@ -73,7 +75,7 @@ class AnalysisService:
         procedures = self.extractor.run(payload.note_text, structured_note)
         candidates = self.coder.run(procedures)
         findings = self.auditor.run(candidates, structured_note)
-        classification = self._apply_deterministic_guardrails(structured_note, candidates, findings)
+        self._apply_deterministic_guardrails(structured_note, candidates, findings)
         ai_analysis, ai_status = self._maybe_run_ai_analysis(payload.note_text, candidates, findings)
         if ai_analysis:
             structured_note = self._merge_structured_note(structured_note, ai_analysis)
@@ -81,9 +83,9 @@ class AnalysisService:
             procedures = self._merge_ai_procedures(procedures, ai_analysis, structured_note)
             candidates = self.coder.run(procedures)
             findings = self.auditor.run(candidates, structured_note)
-            classification = self._apply_deterministic_guardrails(structured_note, candidates, findings)
+            self._apply_deterministic_guardrails(structured_note, candidates, findings)
         findings.extend(self._ai_audit_findings(ai_analysis, candidates))
-        classification = self._apply_deterministic_guardrails(structured_note, candidates, findings)
+        self._apply_deterministic_guardrails(structured_note, candidates, findings)
         if ai_analysis and ai_analysis.unsupported_or_unclear_procedure and not any(finding.category == "unsupported_code" for finding in findings):
             findings.append(self._unsupported_ai_finding())
         estimates = self.estimator.run(candidates)
@@ -104,25 +106,11 @@ class AnalysisService:
         report["ai_probable_operative_intent"] = ai_analysis.probable_operative_intent if ai_analysis else None
         report["ai_supporting_texts"] = self._ai_supporting_texts(ai_analysis)
         report["ai_cpt_rationales"] = self._ai_cpt_rationales(ai_analysis) or self._validated_cpt_rationales(ai_analysis, candidates)
-        report["debug_backend_version"] = BACKEND_RUNTIME_MARKER_VERSION
-        report["debug_analysis_created_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info({"event": "BACKEND_RUNTIME_MARKER", "version": BACKEND_RUNTIME_MARKER_VERSION})
         if self.apply_final_guardrails(payload.note_text, report, findings, section_result):
             procedures = []
             candidates = []
             estimates = []
             summary = "Detected procedure documentation conflict before coding analysis."
-        report["debug_section_analysis"] = debug_section_analysis
-        self._log_review_classification(classification, report)
-        logger.info(
-            {
-                "event": "FINAL_RESPONSE_BEFORE_RETURN",
-                "review_status": report.get("review_status") or report.get("claim_readiness_status"),
-                "main_issue": report.get("main_issue"),
-                "detected_procedure": report.get("detected_procedure"),
-                "debug_backend_version": report.get("debug_backend_version"),
-            }
-        )
 
         analysis = models.Analysis(
             note_id=note.id,
@@ -157,21 +145,6 @@ class AnalysisService:
         if classification.procedure_conflict and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
             findings.append(ReviewEngine.conflict_finding())
         return classification
-
-    @staticmethod
-    def _log_review_classification(classification: ReviewClassification, report: dict) -> None:
-        log_event(
-            logger,
-            logging.INFO,
-            "review.finalized",
-            procedure_family=classification.procedure_family,
-            findings_family=classification.findings_family,
-            technique_family=classification.technique_family,
-            postop_family=classification.postop_family,
-            procedure_conflict=classification.procedure_conflict,
-            final_review_status=report.get("claim_readiness_status"),
-            final_main_issue=report.get("main_issue"),
-        )
 
     @staticmethod
     def _apply_review_priority(report: dict, findings: list[AuditFinding]) -> None:
@@ -217,46 +190,19 @@ class AnalysisService:
         section_result: SectionConsistencyResult | None = None,
     ) -> bool:
         section_result = section_result or analyze_section_consistency(note_text)
-        logger.info(
-            {
-                "event": "FINAL_GUARDRAIL_RUNTIME_CHECK",
-                "procedure_conflict": section_result.procedure_conflict,
-                "conflict_reason": section_result.conflict_reason,
-                "review_status_before": analysis_result.get("review_status") or analysis_result.get("claim_readiness_status"),
-                "main_issue_before": analysis_result.get("main_issue"),
-            }
-        )
         override_applied = section_result.procedure_conflict
 
         if override_applied:
             if findings is not None and not any(finding.category == "procedure_documentation_conflict" for finding in findings):
                 findings.append(ReviewEngine.conflict_finding("Confirm final operative procedure before coding."))
             cls._apply_procedure_conflict_result(analysis_result, section_result, findings)
-            logger.info(
-                {
-                    "event": "FINAL_GUARDRAIL_OVERRIDE_APPLIED",
-                    "review_status_after": "High Risk",
-                    "main_issue_after": "Procedure documentation conflict",
-                }
-            )
 
         log_event(
             logger,
             logging.INFO,
             "section_consistency.final_guardrail",
-            procedure_text=section_result.procedure_text,
-            technique_text=section_result.technique_text,
-            findings_text=section_result.findings_text,
-            diagnosis_text=section_result.diagnosis_text,
-            procedure_families=section_result.procedure_families,
-            findings_families=section_result.findings_families,
-            technique_families=section_result.technique_families,
-            diagnosis_families=section_result.diagnosis_families,
-            explicit_combined=section_result.explicit_combined,
-            procedure_conflict=section_result.procedure_conflict,
-            conflict_reason=section_result.conflict_reason,
-            final_review_status=analysis_result.get("claim_readiness_status") or analysis_result.get("review_status"),
-            final_main_issue=analysis_result.get("main_issue"),
+            conflict_detected=section_result.procedure_conflict,
+            final_status=analysis_result.get("review_status") or analysis_result.get("claim_readiness_status"),
         )
         return override_applied
 
@@ -299,42 +245,18 @@ class AnalysisService:
     def classify_section_family(section_text: str) -> ProcedureFamily | None:
         return ReviewEngine.classify_section_family(section_text)
 
-    @classmethod
-    def _log_raw_section_review(cls, structured_note: StructuredOperativeNote, report: dict) -> None:
-        classification = ReviewEngine.classify(structured_note)
-        log_event(
-            logger,
-            logging.INFO,
-            "review.raw_section_finalized",
-            procedure_family=classification.procedure_family,
-            findings_family=classification.findings_family,
-            technique_family=classification.technique_family,
-            postop_family=classification.postop_family,
-            procedure_header_procedures=AnalysisService._family_values(classification.procedure_header_procedures),
-            findings_procedures=AnalysisService._family_values(classification.findings_procedures),
-            technique_procedures=AnalysisService._family_values(classification.technique_procedures),
-            diagnosis_procedures=AnalysisService._family_values(classification.diagnosis_procedures),
-            procedure_conflict=classification.procedure_conflict,
-            final_review_status=report.get("claim_readiness_status"),
-            final_main_issue=report.get("main_issue"),
-        )
-
-    @staticmethod
-    def _family_values(families: set[ProcedureFamily]) -> list[str]:
-        return sorted(family.value for family in families)
-
     def get_analysis(self, db: Session, analysis_id: UUID) -> AnalysisReport:
         analysis = db.get(models.Analysis, str(analysis_id))
         if analysis is None:
             raise LookupError("Analysis not found")
+        report = self._public_report(analysis.report)
 
         return AnalysisReport(
             id=UUID(analysis.id),
             note_id=UUID(analysis.note_id),
             status=analysis.status,
-            analysis_mode=analysis.report.get("analysis_mode", "Rules mode"),
-            structured_note=analysis.report.get("structured_note"),
-            debug_section_analysis=analysis.report.get("debug_section_analysis"),
+            analysis_mode=report.get("analysis_mode", "Rules mode"),
+            structured_note=report.get("structured_note"),
             extracted_procedures=[
                 {
                     "id": UUID(row.id),
@@ -390,9 +312,16 @@ class AnalysisService:
             ],
             total_estimated_reimbursement=analysis.total_estimated_reimbursement,
             summary=analysis.summary,
-            report=analysis.report,
+            report=report,
             created_at=analysis.created_at,
         )
+
+    @staticmethod
+    def _public_report(report: dict) -> dict:
+        public_report = dict(report)
+        for field in NON_PUBLIC_REPORT_FIELDS:
+            public_report.pop(field, None)
+        return public_report
 
     def _run_ai_analysis(self, note_text: str) -> tuple[AIStructuredOperativeNote | None, str]:
         selected_provider = self.settings.llm_provider.strip().lower()
@@ -1041,6 +970,7 @@ class AnalysisService:
         if analysis is None:
             raise LookupError("Analysis not found")
         report = self.get_analysis(db, analysis_id)
+        public_report = report.report
         return {
             "note": {
                 "id": analysis.note.id,
@@ -1050,9 +980,9 @@ class AnalysisService:
             },
             "analysis": report.model_dump(mode="json"),
             "claim_readiness": {
-                "score": analysis.report.get("claim_readiness_score"),
-                "status": analysis.report.get("claim_readiness_status"),
-                "explanation": analysis.report.get("claim_readiness_explanation"),
+                "score": public_report.get("claim_readiness_score"),
+                "status": public_report.get("claim_readiness_status"),
+                "explanation": public_report.get("claim_readiness_explanation"),
             },
-            "final_report": analysis.report,
+            "final_report": public_report,
         }

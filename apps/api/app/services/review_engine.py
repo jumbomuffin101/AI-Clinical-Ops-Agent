@@ -131,17 +131,6 @@ class ReviewEngine:
     @classmethod
     def validate_section_consistency(cls, note_text: str) -> dict:
         result = analyze_section_consistency(note_text)
-        log_event(
-            logger,
-            logging.INFO,
-            "section_consistency.validation",
-            procedure_families=result.procedure_families,
-            findings_families=result.findings_families,
-            technique_families=result.technique_families,
-            diagnosis_families=result.diagnosis_families,
-            explicit_combined=result.explicit_combined,
-            has_conflict=result.procedure_conflict,
-        )
         if not result.procedure_conflict:
             return {
                 "has_conflict": False,
@@ -153,10 +142,6 @@ class ReviewEngine:
                 "suggested_code": None,
             }
         return {"has_conflict": True, **result.review_override()}
-
-    @classmethod
-    def debug_section_analysis(cls, note_text: str) -> dict:
-        return analyze_section_consistency(note_text).debug_payload()
 
     @classmethod
     def extract_raw_sections(cls, note_text: str) -> dict[str, str]:
