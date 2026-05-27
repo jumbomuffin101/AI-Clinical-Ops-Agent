@@ -87,11 +87,13 @@ type AnalysisReport = {
   total_estimated_reimbursement: number;
   debug_section_analysis?: DebugSectionAnalysis | null;
   report: {
+    review_status?: string;
     claim_readiness_score: number;
     claim_readiness_status: string;
     claim_readiness_explanation: string;
     claim_readiness_reasons?: string[];
     recommended_action?: string;
+    recommended_next_step?: string;
     main_issue?: string;
     detected_procedure?: string;
     analysis_mode?: string;
@@ -318,6 +320,8 @@ export default function Home() {
   }, [identifierWarning]);
 
   useEffect(() => {
+    if (!visibleReport) return;
+    console.log("UI REPORT DEBUG", visibleReport.report);
     const debugSectionAnalysis = debugSectionAnalysisForReport(visibleReport);
     if (!debugSectionAnalysis) return;
     console.log(
@@ -1379,13 +1383,6 @@ function readableCategory(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function recommendedAction(status: string) {
-  if (status === "Ready") return "Proceed with standard clinical operations review.";
-  if (status === "Needs Review") return "Clarify documentation before submission.";
-  if (status === "High Risk") return "Do not submit until billing conflicts or documentation gaps are resolved.";
-  return "Run analysis to generate a recommended action.";
-}
-
 function hasSuggestedFixes(report: AnalysisReport | null) {
   return suggestedFixFindings(report).length > 0;
 }
@@ -1441,11 +1438,7 @@ function reviewMetadata(report: AnalysisReport) {
 }
 
 function detectedProcedureLabel(report: AnalysisReport) {
-  if (report.report.detected_procedure) return report.report.detected_procedure;
-  if (hasProcedureDocumentationConflict(report)) return "Conflicting procedure documentation";
-  if (report.report.ai_procedure_summary) return cleanProcedureSummary(report.report.ai_procedure_summary);
-  const names = report.extracted_procedures.map((procedure) => procedure.name).filter((name) => name !== "Unclassified operative procedure");
-  return names.length ? names.join(", ") : "Procedure identified, coder confirmation recommended";
+  return report.report.detected_procedure ?? "Procedure not reported";
 }
 
 function detectedProcedureItems(report: AnalysisReport) {
@@ -1511,51 +1504,11 @@ function keyOperativeDetails(report: AnalysisReport) {
 }
 
 function nextStepLabel(report: AnalysisReport) {
-  const issue = reviewMainIssue(report);
-  if (issue === "Procedure documentation conflict") return report.report.recommended_action ?? "Confirm final operative procedure before coding.";
-  if (!meaningfulCptCandidate(report)) {
-    if (isGiSurgeryReview(report)) {
-      return "Confirm bowel resection extent, anastomosis details, additional procedures, and final CPT selection required.";
-    }
-    return "Confirm operative details and final CPT selection with a human coder.";
-  }
-  if (issue === "Missing laterality") return "Clarify left or right side before review.";
-  if (issue === "Bundling conflict") return "Confirm which service should be billed before submission.";
-  if (issue === "Ambiguous documentation") return "Clarify the procedure intent and operative extent.";
-  return report.report.recommended_action ?? recommendedAction(report.report.claim_readiness_status);
+  return report.report.recommended_next_step ?? report.report.recommended_action ?? "No recommended next step reported.";
 }
 
 function displayReviewStatus(report: AnalysisReport) {
-  if (report.report.claim_readiness_status !== "High Risk") return report.report.claim_readiness_status;
-  if (reviewMainIssue(report) === "Missing laterality" && !hasSevereBillingRisk(report)) return "Needs Review";
-  if (!meaningfulCptCandidate(report) && !hasSevereBillingRisk(report)) return "Needs Review";
-  return "High Risk";
-}
-
-function hasSevereBillingRisk(report: AnalysisReport) {
-  const severeCategories = new Set([
-    "bundling_conflict",
-    "procedure_documentation_conflict",
-    "conflicting_documentation",
-    "conflicting_procedures",
-    "mutually_exclusive_procedures",
-    "unsupported_cpt_combination",
-    "compliance_risk",
-    "severe_ambiguity",
-  ]);
-  return report.audit_findings.some((finding) => {
-    return severeCategories.has(finding.category);
-  });
-}
-
-function mainIssue(findings: AuditFinding[]) {
-  const categories = findings.map((finding) => finding.category);
-  if (categories.includes("procedure_documentation_conflict") || categories.includes("conflicting_documentation") || categories.includes("conflicting_procedures")) return "Procedure documentation conflict";
-  if (categories.includes("bundling_conflict")) return "Bundling conflict";
-  if (categories.includes("missing_laterality")) return "Missing laterality";
-  if (categories.includes("low_confidence")) return "Ambiguous documentation";
-  if (categories.includes("unsupported_code")) return "Coder review needed";
-  return "No major issues";
+  return report.report.review_status ?? report.report.claim_readiness_status;
 }
 
 function reviewIssueLabel(issue: string) {
@@ -1564,15 +1517,7 @@ function reviewIssueLabel(issue: string) {
 }
 
 function reviewMainIssue(report: AnalysisReport) {
-  const reportedIssue = reviewIssueLabel(report.report.main_issue ?? "");
-  if (reportedIssue === "Procedure documentation conflict" || reportedIssue === "Procedure-documentation mismatch" || reportedIssue === "Conflicting documentation" || reportedIssue === "Bundling conflict" || reportedIssue === "Missing laterality") {
-    return ["Procedure-documentation mismatch", "Conflicting documentation"].includes(reportedIssue) ? "Procedure documentation conflict" : reportedIssue;
-  }
-  if (!meaningfulCptCandidate(report)) {
-    if (isGiSurgeryReview(report)) return "Complex procedure requires coder review";
-    return "Coder review needed";
-  }
-  return reportedIssue || reviewIssueLabel(mainIssue(report.audit_findings.filter((finding) => finding.severity !== "info")));
+  return report.report.main_issue ?? "No major issues";
 }
 
 function reportNarrative(report: AnalysisReport) {
@@ -1668,8 +1613,8 @@ function compareReports(previous: AnalysisReport, current: AnalysisReport): Revi
   const cptChanges = previousCpt === currentCpt ? [] : [{ from: previousCpt, to: currentCpt }];
 
   return {
-    previousClaimStatus: previous.report.claim_readiness_status,
-    newClaimStatus: current.report.claim_readiness_status,
+    previousClaimStatus: displayReviewStatus(previous),
+    newClaimStatus: displayReviewStatus(current),
     previousReadinessScore: previous.report.claim_readiness_score,
     newReadinessScore: current.report.claim_readiness_score,
     readinessScoreDelta: current.report.claim_readiness_score - previous.report.claim_readiness_score,
