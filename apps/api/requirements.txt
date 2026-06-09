@@ -7,4 +7,5 @@ pytest
 httpx
 sqlalchemy
 psycopg[binary]
+psycopg2-binary
 alembic
